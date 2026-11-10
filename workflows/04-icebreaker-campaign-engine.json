@@ -1,0 +1,653 @@
+{
+  "name": "ENT-02: 04 - Dynamic Icebreaker Matrix & Campaign Engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8762934f-e912-473a-9179-e88ecae80950",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_contacts",
+        "limit": 5,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "deliverability_status",
+              "condition": "eq",
+              "keyValue": "valid"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "1c6f0cf1-0916-411c-a699-71736602a6bd",
+      "name": "Fetch Verified Contacts",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_companies",
+        "limit": 5,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.company_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "905120ba-a204-4332-a54d-a281af10aa53",
+      "name": "Get Company Dossier",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0e56824d-ab4b-4e2c-af99-4b4fabb60fec",
+              "name": "email",
+              "value": "={{ $('Fetch Verified Contacts').item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "17cf67f6-383b-433a-b5ae-8a36fc731269",
+              "name": "first_name",
+              "value": "={{ $('Fetch Verified Contacts').item.json.first_name }}",
+              "type": "string"
+            },
+            {
+              "id": "40ffa35f-d6af-491d-a436-b56c47655e55",
+              "name": "last_name",
+              "value": "={{ $('Fetch Verified Contacts').item.json.last_name }}",
+              "type": "string"
+            },
+            {
+              "id": "0611bc78-9346-41c8-907d-e2132396607c",
+              "name": "company_name",
+              "value": "={{ $json.company_name }}",
+              "type": "string"
+            },
+            {
+              "id": "1adb4eb9-97bd-45ea-92ef-9a791f846b8e",
+              "name": "website",
+              "value": "={{ $json.website_url }}",
+              "type": "string"
+            },
+            {
+              "id": "8a9e536e-7683-4730-8bc0-365e42eae4af",
+              "name": "campaign_id",
+              "value": "CATERFLOW_CHI_BANQUETS_Q4",
+              "type": "string"
+            },
+            {
+              "id": "2914f235-f6a2-4806-a198-8711033ea73c",
+              "name": "custom_variable",
+              "value": "={\n  \"icebreaker\": {{ JSON.stringify($json.icebreaker_angles?.primary || 'Loved your private dining room layout.') }},\n  \"pain_point\": {{ JSON.stringify($json.identified_pain_points?.[0] || 'Requires manual PDF quote friction.') }},\n  \"city\": {{ JSON.stringify($json.city || 'Chicago') }},\n  \"icp_score\": {{ $json.icp_score || 75 }}\n}\n",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "3434ad6d-7993-4507-a2df-599e2773b99b",
+      "name": "Build Outreach Payload"
+    },
+    {
+      "parameters": {
+        "from": "Liam Thorne <you@example.com>",
+        "to": "you@example.com",
+        "subject": "=Private dining at {{ $json.company_name }}?",
+        "emailFormat": "text",
+        "text": "=Hi {{ $json.first_name }},\\n\\n{{ $json.custom_variable.icebreaker }}\\n\\n{{ $json.custom_variable.pain_point }}\\n\\nWe built an automated private dining booking engine for Chicago hospitality venues that captures high-ticket corporate inquiries within 60 seconds and delivers instant banquet brochures.\\n\\nOpen to a brief 5-minute chat on Thursday?\\n\\nBest,\\nLiam Thorne\\nCo-Founder & Head of Growth | CaterFlow AI\\n",
+        "additionalOptions": {
+          "replyTo": "you@example.com"
+        }
+      },
+      "type": "n8n-nodes-resend.resend",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "b73a6427-53cb-459e-bbc8-13a1ba02af52",
+      "name": "Send a new email",
+      "credentials": {
+        "resendOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Resend account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "outbound_contacts",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Fetch Verified Contacts').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "assigned_campaign_id",
+              "fieldValue": "={{ $('Build Outreach Payload').item.json.campaign_id }}"
+            },
+            {
+              "fieldId": "instantly_lead_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "email_status",
+              "fieldValue": "sent"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "1bf24d70-7f27-4441-ae8a-4ea459d47fcc",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appYOUR_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYOUR_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Qualified Accounts & Leads",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID/tblYOUR_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Supabase Company ID": "={{ $('Get Company Dossier').item.json.id }}",
+            "Outbound Campaign": "CaterFlow_Chicago_Q4",
+            "Outreach Status": "Email Sent"
+          },
+          "matchingColumns": [
+            "Supabase Company ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "City & State",
+              "displayName": "City & State",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Target Vertical",
+              "displayName": "Target Vertical",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Luxury Venues",
+                  "value": "Luxury Venues"
+                },
+                {
+                  "name": "Corporate Catering",
+                  "value": "Corporate Catering"
+                },
+                {
+                  "name": "Private Dining",
+                  "value": "Private Dining"
+                },
+                {
+                  "name": "Hotel Hospitality",
+                  "value": "Hotel Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Verified Email",
+              "displayName": "Verified Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ICP Score",
+              "displayName": "ICP Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Catering Capabilities",
+              "displayName": "Catering Capabilities",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "options": [
+                {
+                  "name": "Private Dining Rooms",
+                  "value": "Private Dining Rooms"
+                },
+                {
+                  "name": "Full Buyout",
+                  "value": "Full Buyout"
+                },
+                {
+                  "name": "Off-Premise Catering",
+                  "value": "Off-Premise Catering"
+                },
+                {
+                  "name": "Bar Packages",
+                  "value": "Bar Packages"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Identified Pain Point",
+              "displayName": "Identified Pain Point",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "AI Icebreaker Angle",
+              "displayName": "AI Icebreaker Angle",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Deliverability Status",
+              "displayName": "Deliverability Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Valid (SMTP Confirmed)",
+                  "value": "Valid (SMTP Confirmed)"
+                },
+                {
+                  "name": "Catch-All",
+                  "value": "Catch-All"
+                },
+                {
+                  "name": "Invalid / Risky",
+                  "value": "Invalid / Risky"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outbound Campaign",
+              "displayName": "Outbound Campaign",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "CaterFlow_Chicago_Q4",
+                  "value": "CaterFlow_Chicago_Q4"
+                },
+                {
+                  "name": "FeastOps_Dallas_Venues",
+                  "value": "FeastOps_Dallas_Venues"
+                },
+                {
+                  "name": "Nexus_NYC_Hospitality",
+                  "value": "Nexus_NYC_Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outreach Status",
+              "displayName": "Outreach Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Queued in Instantly",
+                  "value": "Queued in Instantly"
+                },
+                {
+                  "name": "Email Sent",
+                  "value": "Email Sent"
+                },
+                {
+                  "name": "Opened",
+                  "value": "Opened"
+                },
+                {
+                  "name": "🔥 Replied - Interested",
+                  "value": "🔥 Replied - Interested"
+                },
+                {
+                  "name": "Meeting Booked",
+                  "value": "Meeting Booked"
+                },
+                {
+                  "name": "Unsubscribed",
+                  "value": "Unsubscribed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Supabase Company ID",
+              "displayName": "Supabase Company ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created Date",
+              "displayName": "Created Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Inbound Replies & Hot Leads",
+              "displayName": "Inbound Replies & Hot Leads",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "621c110d-48dd-4bac-a6c8-e2307a660594",
+      "name": "Create or update a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "557859cb-550f-44b6-ab18-e0bdad477ff3",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        -96
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Verified Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Verified Contacts": {
+      "main": [
+        [
+          {
+            "node": "Get Company Dossier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company Dossier": {
+      "main": [
+        [
+          {
+            "node": "Build Outreach Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Outreach Payload": {
+      "main": [
+        [
+          {
+            "node": "Send a new email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a new email": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row": {
+      "main": [
+        [
+          {
+            "node": "Create or update a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch Verified Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
+    "saveDataErrorExecution": "all"
+  },
+  "active": false
+}

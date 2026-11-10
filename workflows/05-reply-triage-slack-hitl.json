@@ -1,0 +1,815 @@
+{
+  "name": "ENT-02: 05 - Inbound Reply Triage & Slack Human-in-the-Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound-reply",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        80
+      ],
+      "id": "fb3fbd85-b15a-4bc3-8991-9293ee0c2da8",
+      "name": "Inbound Reply Webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=PROSPECT EMAIL:\nFrom: {{ $('Normalize Intake').item.json.from_email }}\nSubject: {{ $('Normalize Intake').item.json.subject }}\nBody:\n{{ $('Normalize Intake').item.json.body_text }}\n",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the Inbound Triage AI for CaterFlow AI.\nAnalyze incoming replies from restaurant owners and event directors.\n\nClassify the intent into EXACTLY one category:\n1. \"INTERESTED\" - Shows buying intent, asks for pricing, availability, or meeting.\n2. \"OBJECTION\" - Asks technical questions, cites timing, or current vendor.\n3. \"OOO\" - Auto-responder or out of office note.\n4. \"UNSUBSCRIBE\" - Requests removal, expresses hostility, or says not interested.\n\nIf INTERESTED or OBJECTION, draft a polite, professional 2-sentence response from Liam Thorne offering a calendar link.\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        224,
+        80
+      ],
+      "id": "667580b7-ecf5-44e7-9e5e-5ab0c0d45694",
+      "name": "Classify Reply Intent"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"sentiment\": {\n      \"type\": \"string\",\n      \"enum\": [\"INTERESTED\", \"OBJECTION\", \"OOO\", \"UNSUBSCRIBE\"]\n    },\n    \"confidence_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 1 confidence\"\n    },\n    \"ai_draft_reply\": {\n      \"type\": \"string\",\n      \"description\": \"2-sentence response draft\"\n    },\n    \"urgency\": {\n      \"type\": \"string\",\n      \"enum\": [\"HIGH\", \"MEDIUM\", \"LOW\"]\n    }\n  },\n  \"required\": [\"sentiment\", \"ai_draft_reply\", \"urgency\"]\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        368,
+        320
+      ],
+      "id": "d1234a6d-d27f-4562-bed9-d1e30e510eac",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        240,
+        320
+      ],
+      "id": "8a5d3fb8-5845-40b2-8a72-9cf41bb4e80b",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "REPLACE_ME",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output?.sentiment || $json.sentiment }}",
+                    "rightValue": "INTERESTED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8570a239-80b3-46bd-af16-6dda9188a404"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "ba72a5c8-0867-4e56-8d91-9635ab5d0972",
+                    "leftValue": "={{ $json.output?.sentiment || $json.sentiment }}",
+                    "rightValue": "SLACK_ID_PLACEHOLDER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Unsubscribe"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        576,
+        64
+      ],
+      "id": "d7bb78e3-db10-44e2-92bf-d3e2dddbfad4",
+      "name": "Route by Intent"
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_suppression",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "email_or_domain",
+              "fieldValue": "={{ $('Normalize Intake').item.json.from_email }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "email"
+            },
+            {
+              "fieldId": "reason",
+              "fieldValue": "Prospect requested unsubscribe via inbound email"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        800,
+        80
+      ],
+      "id": "c8e91a21-29e0-453f-a132-ee1f5c402785",
+      "name": "Auto-Suppress Email",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_inbound_replies",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "prospect_email",
+              "fieldValue": "={{ $('Normalize Intake').item.json.from_email }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "INTERESTED"
+            },
+            {
+              "fieldId": "reply_body",
+              "fieldValue": "={{ $('Normalize Intake').item.json.body_text }}"
+            },
+            {
+              "fieldId": "ai_draft_response",
+              "fieldValue": "={{ $('Classify Reply Intent').item.json.output?.ai_draft_reply || $('Classify Reply Intent').item.json.ai_draft_reply }}"
+            },
+            {
+              "fieldId": "operator_action",
+              "fieldValue": "pending_review"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -112
+      ],
+      "id": "4a7ad44f-e232-45f4-a2ac-4320f34bf556",
+      "name": "Log Hot Reply to Ledger",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appYOUR_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYOUR_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Inbound Replies & Hot Leads",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID/tblYOUR_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Prospect Name": "Director of Private Events",
+            "Sentiment": "🔥 Interested",
+            "Prospect Reply": "={{ $('Normalize Intake').item.json.body_text }}",
+            "AI Drafted Reply": "={{ $('Classify Reply Intent').item.json.output?.ai_draft_reply }}",
+            "SLA Status": "⚡ < 15 Min (Met)",
+            "Action Taken": "Manual Edit"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Prospect Name",
+              "id": "Prospect Name",
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Sentiment",
+              "id": "Sentiment",
+              "options": [
+                {
+                  "name": "🔥 Interested",
+                  "value": "🔥 Interested"
+                },
+                {
+                  "name": "Objection",
+                  "value": "Objection"
+                },
+                {
+                  "name": "Out of Office",
+                  "value": "Out of Office"
+                },
+                {
+                  "name": "Unsubscribe",
+                  "value": "Unsubscribe"
+                }
+              ],
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "options"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Prospect Reply",
+              "id": "Prospect Reply",
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "AI Drafted Reply",
+              "id": "AI Drafted Reply",
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "SLA Status",
+              "id": "SLA Status",
+              "options": [
+                {
+                  "name": "⚡ < 15 Min (Met)",
+                  "value": "⚡ < 15 Min (Met)"
+                },
+                {
+                  "name": "⚠️ 15-60 Min",
+                  "value": "⚠️ 15-60 Min"
+                },
+                {
+                  "name": "🚨 > 60 Min (Breached)",
+                  "value": "🚨 > 60 Min (Breached)"
+                }
+              ],
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "options"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Action Taken",
+              "id": "Action Taken",
+              "options": [
+                {
+                  "name": "Approved AI Draft",
+                  "value": "Approved AI Draft"
+                },
+                {
+                  "name": "Manual Edit",
+                  "value": "Manual Edit"
+                },
+                {
+                  "name": "Call Scheduled",
+                  "value": "Call Scheduled"
+                },
+                {
+                  "name": "Escalated to Founder",
+                  "value": "Escalated to Founder"
+                }
+              ],
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "options"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        -112
+      ],
+      "id": "081d8d52-827c-4629-a474-995ba540dc09",
+      "name": "Create Table 2 Hot Lead Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appYOUR_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYOUR_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID/tblYOUR_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Verified Email": "={{ $('Normalize Intake').item.json.from_email }}",
+            "Outreach Status": "Unsubscribed"
+          },
+          "matchingColumns": [
+            "Verified Email"
+          ],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Verified Email",
+              "id": "Verified Email",
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "Outreach Status",
+              "id": "Outreach Status",
+              "options": [
+                {
+                  "name": "Queued in Instantly",
+                  "value": "Queued in Instantly"
+                },
+                {
+                  "name": "Email Sent",
+                  "value": "Email Sent"
+                },
+                {
+                  "name": "Opened",
+                  "value": "Opened"
+                },
+                {
+                  "name": "🔥 Replied - Interested",
+                  "value": "🔥 Replied - Interested"
+                },
+                {
+                  "name": "Meeting Booked",
+                  "value": "Meeting Booked"
+                },
+                {
+                  "name": "Unsubscribed",
+                  "value": "Unsubscribed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false,
+              "required": false,
+              "type": "options"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        80
+      ],
+      "id": "32e01fc8-cb32-4f07-a3d2-39fd748beb35",
+      "name": "Mark Airtable Unsubscribed",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SLACK_BOT_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ]
+        },
+        "jsonBody": "={{\n  JSON.stringify({\n    channel: \"C0CDJNJAFQS\",\n    text: `🔥 HOT LEAD INBOUND: ${$('Normalize Intake').item.json.from_email || 'Venue Prospect'}`,\n    blocks: [\n      {\n        type: \"header\",\n        text: {\n          type: \"plain_text\",\n          text: `🔥 HOT LEAD INBOUND: ${$('Normalize Intake').item.json.from_email || 'Venue Prospect'}`,\n          emoji: true\n        }\n      },\n      {\n        type: \"section\",\n        fields: [\n          {\n            type: \"mrkdwn\",\n            text: `*From:*\\n${$('Normalize Intake').item.json.from_email || 'you@example.com'}`\n          },\n          {\n            type: \"mrkdwn\",\n            text: \"*SLA Target:*\\n⚡ < 15 Minutes\"\n          }\n        ]\n      },\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: `*Prospect Said:*\\n> \"${($('Normalize Intake').item.json.body_text || 'Interested in banquet automation.').replace(/\\n+/g, ' ')}\"`\n        }\n      },\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: `*Suggested AI Response:*\\n\\`\\`\\`${$('Classify Reply Intent').item.json.output?.ai_draft_reply || ''}\\`\\`\\``\n        }\n      },\n      {\n        type: \"actions\",\n        elements: [\n          {\n            type: \"button\",\n            text: {\n              type: \"plain_text\",\n              text: \"✅ Approve & Send AI Draft\"\n            },\n            style: \"primary\",\n            action_id: \"caterflow_approve\",\n            value: `caterflow_approve|${$('Log Hot Reply to Ledger').item.json.id}`\n          },\n          {\n            type: \"button\",\n            text: {\n              type: \"plain_text\",\n              text: \"🤝 Introduce to Client\"\n            },\n            action_id: \"caterflow_intro\",\n            value: `caterflow_intro|${$('Log Hot Reply to Ledger').item.json.id}`\n          }\n        ]\n      }\n    ]\n  })\n}}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1248,
+        -112
+      ],
+      "id": "43284747-8a32-47c4-add1-a908b37cf467",
+      "name": "Dispatch Slack HITL Card"
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_inbound_replies",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "prospect_email",
+              "fieldValue": "={{ $('Normalize Intake').item.json.from_email }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "={{ $json.output?.sentiment || 'OTHER' }}"
+            },
+            {
+              "fieldId": "reply_body",
+              "fieldValue": "={{ $('Normalize Intake').item.json.body_text }}"
+            },
+            {
+              "fieldId": "ai_draft_response",
+              "fieldValue": "={{ $json.output?.ai_draft_reply || '' }}"
+            },
+            {
+              "fieldId": "operator_action",
+              "fieldValue": "no_action_needed"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        800,
+        272
+      ],
+      "id": "529d2da8-ad65-4f8c-a927-c781089a7b3d",
+      "name": "Log Non-Urgent Reply",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "to:you@example.com is:unread",
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "id": "811220cd-9b93-4079-b51f-8f98329dd0da",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        -80
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.subject }}",
+              "operator": {
+                "operation": "contains",
+                "type": "string"
+              },
+              "rightValue": "Private dining"
+            },
+            {
+              "leftValue": "={{ $json.subject }}",
+              "operator": {
+                "operation": "contains",
+                "type": "string"
+              },
+              "rightValue": "CaterFlow"
+            },
+            {
+              "leftValue": "={{ JSON.stringify($json.to || '') }}",
+              "operator": {
+                "operation": "contains",
+                "type": "string"
+              },
+              "rightValue": "you@example.com"
+            }
+          ],
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "1e434082-606e-4eaf-8881-84e00df60ea8",
+      "name": "Is Lead Campaign Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        16,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "384e80a7-3d43-4c09-9162-24a04de9abfc",
+      "name": "Ignore Personal Email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -176
+      ]
+    },
+    {
+      "id": "64000788-bf01-4dc9-bbc1-d313dbe8dac1",
+      "name": "Normalize Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nlet from_email = '';\nif (item.from && typeof item.from === 'object' && item.from.value && item.from.value[0]) {\n  from_email = item.from.value[0].address;\n} else if (item.from && typeof item.from === 'object' && item.from.text) {\n  from_email = item.from.text;\n} else if (typeof item.from === 'string') {\n  from_email = item.from;\n}\n\nlet subject = item.subject || '';\nlet body_text = item.text || item.snippet || '';\n\nif (!from_email && item.body) {\n  from_email = item.body?.data?.from || item.body?.from || '';\n  subject = item.body?.data?.subject || item.body?.subject || '';\n  body_text = item.body?.data?.text || item.body?.reply_text || item.body?.text || '';\n}\n\nreturn [{\n  json: {\n    from_email: from_email || 'you@example.com',\n    subject: subject || 'Re: Private dining at Park Manor 75?',\n    body_text: body_text || 'Interested in private dining booking engine'\n  }\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify Reply Intent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Reply Intent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Reply Intent": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "Log Hot Reply to Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto-Suppress Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Non-Urgent Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Suppress Email": {
+      "main": [
+        [
+          {
+            "node": "Mark Airtable Unsubscribed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Hot Reply to Ledger": {
+      "main": [
+        [
+          {
+            "node": "Create Table 2 Hot Lead Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Table 2 Hot Lead Record": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Slack HITL Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Lead Campaign Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Lead Campaign Reply?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Personal Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inbound Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Intake": {
+      "main": [
+        [
+          {
+            "node": "Classify Reply Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
+    "saveDataErrorExecution": "all"
+  },
+  "active": false
+}

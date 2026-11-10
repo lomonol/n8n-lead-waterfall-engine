@@ -1,0 +1,733 @@
+{
+  "name": "ENT-02: 01 - Lead Sourcing & Ingestion Gatekeeper",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        144
+      ],
+      "id": "c53bb599-6422-4fcb-9b67-b081120c7d47",
+      "name": "Lead Intake Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "d63f36be-25d6-44b0-ad86-b29a84db3f1c",
+              "leftValue": "={{ $('Lead Intake Webhook').item.json.headers['x-caterflow-secret-key'] }}",
+              "rightValue": "YOUR_SHARED_SECRET",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        224,
+        144
+      ],
+      "id": "c90a4d18-6db4-426f-af2c-17df34db7e50",
+      "name": "Validate Secret Token"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f4f5a70f-be84-4b42-bc1b-92a992916763",
+              "name": "batch_id",
+              "value": "={{ 'BATCH-' + $now.format('yyyy-MM-dd') + '-' + $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "5820ef01-2b04-4ef9-9c96-f786e56fe4d4",
+              "name": "company_name",
+              "value": "={{ ($json.company_name || $json.body?.company_name || 'Venue Target').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "5b14574b-f1ea-4f50-aef6-c49d3247499d",
+              "name": "domain",
+              "value": "={{ ($json.website_url || $json.body?.website_url || '').trim().toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "50791e96-01f0-4f7d-83a2-505f3d3140be",
+              "name": "clean_website_url",
+              "value": "={{ 'https://' + ($json.website_url || $json.body?.website_url || '').trim().toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "a73340ea-9572-403e-bade-3568ddb53c0c",
+              "name": "city",
+              "value": "={{ ($json.city || $json.body?.city || 'Chicago').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "95871e60-ac02-4ce0-890d-e360d5a43d6d",
+              "name": "state",
+              "value": "={{ ($json.state || $json.body?.state || 'IL').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "436a4f13-1d4c-4bcb-8dee-5c109240eca0",
+              "name": "vertical",
+              "value": "={{ ($json.vertical || $json.body?.vertical || 'Private Dining & Events').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "b0686899-8560-4c02-8c00-0e5a91908c8f",
+              "name": "phone",
+              "value": "={{ ($json.phone || $json.body?.phone || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "8292fb8e-8c3c-4a10-8c7f-e381abefdf7b",
+              "name": "status",
+              "value": "seeded",
+              "type": "string"
+            },
+            {
+              "id": "907d7b17-be81-4d41-a81e-4f162422b550",
+              "name": "seeded_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        48
+      ],
+      "id": "df202b6d-f0f2-406f-9e56-af32048d1455",
+      "name": "Clean & Normalize Domains"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "body",
+        "options": {
+          "destinationFieldName": ""
+        }
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        48
+      ],
+      "id": "2b642724-3138-4d1b-8a83-48eca9c18da6",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_companies",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "domain",
+              "condition": "eq",
+              "keyValue": "={{ $json.domain }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -224
+      ],
+      "id": "94094e1a-496f-44e8-a214-90765c5d48d8",
+      "name": "Check Existing in Supabase",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "d193b0ce-61cb-48f2-b418-cdea33cb1d64",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1344,
+        -224
+      ],
+      "id": "34d70f69-8315-41cc-a8aa-13d54b15febc",
+      "name": "Is Domain Fresh?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        64
+      ],
+      "id": "2715725f-d8d4-43ab-b03d-6100e28934cb",
+      "name": "Drop Duplicate Domain"
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_companies",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "domain",
+              "fieldValue": "={{ $('Loop Over Items').item.json.domain }}"
+            },
+            {
+              "fieldId": "company_name",
+              "fieldValue": "={{ $('Loop Over Items').item.json.company_name }}"
+            },
+            {
+              "fieldId": "website_url",
+              "fieldValue": "={{ $('Loop Over Items').item.json.clean_website_url }}"
+            },
+            {
+              "fieldId": "city",
+              "fieldValue": "={{ $('Loop Over Items').item.json.city }}"
+            },
+            {
+              "fieldId": "state",
+              "fieldValue": "={{ $('Loop Over Items').item.json.state }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $('Loop Over Items').item.json.status }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -144
+      ],
+      "id": "bb22ade9-8d8b-485f-af06-791fe6deea7b",
+      "name": "Insert Fresh Lead into Ledger",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        896,
+        48
+      ],
+      "id": "9324bcd5-c69a-4006-9c7c-f8167fb5fc4e",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Lead batch authenticated, normalized, and logged to Supabase ledger.\",\n  \"batch_id\": \"{{ $('Clean & Normalize Domains').item.json.batch_id }}\",\n  \"fresh_leads_queued\": {{ $('Insert Fresh Lead into Ledger').isExecuted ? $('Insert Fresh Lead into Ledger').all().length : 0 }}\n}\n",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        -32
+      ],
+      "id": "2abcbdf6-1d0d-4551-b69b-5d0cacaf60ba",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        656
+      ],
+      "id": "db184820-18f0-411b-a57f-1c6b8d0f8f53",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dfd1e44f-c36a-4bdb-be7b-240e34d98c9d",
+              "name": "target_city",
+              "value": "Chicago, IL",
+              "type": "string"
+            },
+            {
+              "id": "0a9bcbc1-6bdf-4283-9ff1-98a077768446",
+              "name": "search_query",
+              "value": "restaurants with private event rooms in Chicago",
+              "type": "string"
+            },
+            {
+              "id": "6ff23ee3-a856-4554-ac64-902132d582eb",
+              "name": "batch_limit",
+              "value": 5,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        560
+      ],
+      "id": "049137d8-781b-4e66-9ec8-4056f9dff627",
+      "name": "Configure Search Query"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        464
+      ],
+      "id": "e34e73f3-cf56-4cec-80de-6dd6229fc789",
+      "name": "Quick Run"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/actors/compass~crawler-google-places/run-sync-get-dataset-items",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "YOUR_APIFY_TOKEN"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\"{{ $json.search_query }}\"],\n  \"locationQuery\": \"{{ $json.target_city }}\",\n  \"maxCrawledPlacesPerSearch\": {{ $json.batch_limit }},\n  \"language\": \"en\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        560
+      ],
+      "id": "e967ab2e-a701-42fd-b693-84e36e22f2bd",
+      "name": "Scrape Maps"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-N8N-HOST/webhook/lead-intake",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-CaterFlow-Secret-Key",
+              "value": "YOUR_SHARED_SECRET"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Format to CaterFlow Schema').all().map(item => item.json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        560
+      ],
+      "id": "f52b12b5-6d1f-4ced-963c-47c8bdbcf9da",
+      "name": "Pipe to Lead Intake Webhook",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"error\": \"Unauthorized\",\n  \"message\": \"Invalid or missing X-CaterFlow-Secret-Key header. Lead batch rejected.\"\n}\n",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        240
+      ],
+      "id": "98959010-2e9a-483b-b740-87ef6b010f50",
+      "name": "Unauthorized"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f32ff0b6-d8f9-49f3-b0e6-b20cd7aba74a",
+              "name": "company_name",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "0d82014f-f378-4203-8e42-78dc318f8819",
+              "name": "website_url",
+              "value": "={{ $json.website }}",
+              "type": "string"
+            },
+            {
+              "id": "e2977103-2f02-4cd9-889f-80a03f7d501d",
+              "name": "phone",
+              "value": "={{ $json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "040965a5-4992-432c-9624-e876c55dddab",
+              "name": "city",
+              "value": "={{ $json.city }}",
+              "type": "string"
+            },
+            {
+              "id": "d6e0cdcf-6709-44e6-ad38-60b5b88a0b9a",
+              "name": "state",
+              "value": "={{ $json.state }}",
+              "type": "string"
+            },
+            {
+              "id": "389a9807-3e61-44ec-8701-ca969ad10a26",
+              "name": "vertical",
+              "value": "={{ $json.categoryName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        560
+      ],
+      "id": "c81f5619-5bc0-4e0d-ac27-bf51587008f8",
+      "name": "Format to CaterFlow Schema"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "WORKFLOW_ID_ent-02-02-deep-ai-website-auditor-icp-sc",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/WORKFLOW_ID_ent-02-02-deep-ai-website-auditor-icp-sc",
+          "cachedResultName": "ENT-02: 02 - Deep AI Website Auditor & ICP Scoring Engine"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "dab75152-4e56-4565-bdda-350390642750",
+      "name": "Trigger Phase 2 Auditor",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        1344,
+        -32
+      ]
+    }
+  ],
+  "connections": {
+    "Lead Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Secret Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Secret Token": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Clean & Normalize Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & Normalize Domains": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Is Domain Fresh?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Domain Fresh?": {
+      "main": [
+        [
+          {
+            "node": "Insert Fresh Lead into Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drop Duplicate Domain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Fresh Lead into Ledger": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Existing in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop Duplicate Domain": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configure Search Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quick Run": {
+      "main": [
+        [
+          {
+            "node": "Configure Search Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure Search Query": {
+      "main": [
+        [
+          {
+            "node": "Scrape Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Maps": {
+      "main": [
+        [
+          {
+            "node": "Format to CaterFlow Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format to CaterFlow Schema": {
+      "main": [
+        [
+          {
+            "node": "Pipe to Lead Intake Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Trigger Phase 2 Auditor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
+    "saveDataErrorExecution": "all"
+  },
+  "active": false
+}

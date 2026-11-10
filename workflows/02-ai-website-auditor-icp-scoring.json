@@ -1,0 +1,886 @@
+{
+  "name": "ENT-02: 02 - Deep AI Website Auditor & ICP Scoring Engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        368
+      ],
+      "id": "a971d1a0-8547-49e7-8bc9-71204ee7d3d0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_companies",
+        "limit": 5,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "seeded"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        368
+      ],
+      "id": "dd1138d1-6f1c-4ae3-9333-98c181294299",
+      "name": "Fetch Seeded Leads",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        448,
+        368
+      ],
+      "id": "9e881ba7-39b4-47ef-a986-e9a677cb1648",
+      "name": "Split In Batches"
+    },
+    {
+      "parameters": {
+        "url": "=https://r.jina.ai/{{ $json.website_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Target-Selector",
+              "value": "main, article, body"
+            },
+            {
+              "name": "X-Return-Format",
+              "value": "markdown"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        96
+      ],
+      "id": "66ff77b9-0ce9-49fa-9b03-c55214a702ee",
+      "name": "Scrape Venue Markdown"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=VENUE TARGET:\nName: {{ $('Split In Batches').item.json.company_name }}\nCity: {{ $('Split In Batches').item.json.city }}, {{ $('Split In Batches').item.json.state }}\nWebsite: {{ $('Split In Batches').item.json.website_url }}\n\nSCRAPED WEBSITE CONTENT:\n{{ $json.distilled_content || 'No event content found' }}\n",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the Chief Underwriting & Outbound Strategist for CaterFlow AI. \nWe are a B2B agency that helps high-end restaurants and venues automate their private event bookings.\n\nCRITICAL PERSPECTIVE RULES:\n- SENDER: CaterFlow AI (Outbound Growth Agency)\n- RECIPIENT: The General Manager or Director of Events at the venue.\n- NEVER write marketing copy to attract diners or customers.\n- NEVER act like an event guest asking to book a party.\n- YOU ARE PITCHING THE VENUE OWNER ON STREAMLINING THEIR PRIVATE EVENT INQUIRIES.\n\nICEBREAKER FORMULA (Must be 1-2 punchy sentences):\n[Specific compliment on a venue room/amenity found in text] + [Observation that event booking requires manual inquiries/PDFs, causing lost corporate revenue].\n\nFEW-SHOT EXAMPLES:\n- Good: \"Loved the layout of Sepia's private dining room—noticed group inquiries still require downloading a static PDF menu, which usually costs Chicago venues 3-4 corporate bookings a month in delayed reply time.\"\n- Good: \"Saw that Quadrangle Club hosts academic gatherings and private buyouts—noticed inquiries are routed through a generic contact form without instant pricing, creating a bottleneck during peak banquet season.\"\n- BAD (DO NOT DO THIS): \"Join the vibrant atmosphere at Sepia for unforgettable food!\" (Reason: Customer ad)\n- BAD (DO NOT DO THIS): \"Would you like a quote for your next event?\" (Reason: Acting like a guest)\n\nICP FIT RUBRIC (0 to 100 Score):\n- Private Event Rooms / Dedicated Banquet Space (+30 pts)\n- Group capacity >= 20 seated or 40 standing (+20 pts)\n- Dedicated events/catering menu or buyout packages (+20 pts)\n- Inquiry form or event contact present (+10 pts)\n- Lacks instant booking / relies on manual PDF quotes or generic emails (+20 pts)\n- Fast casual / counter-serve only (Automatic Score: 0-25)"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1120,
+        96
+      ],
+      "id": "8f38bfe5-44dd-4911-beeb-8d3e3c13d0a7",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "=qwen2.5:3b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1128,
+        328
+      ],
+      "id": "b54e996f-3060-4ecb-af98-e596a7453117",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "REPLACE_ME",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"icp_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 100 ICP fit score based on private dining and catering capability\"\n    },\n    \"icp_qualified\": {\n      \"type\": \"boolean\",\n      \"description\": \"True if icp_score is 70 or above, false otherwise\"\n    },\n    \"online_booking_present\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the venue has instant online private event booking\"\n    },\n    \"catering_capabilities\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"description\": \"List of event capabilities found (e.g. Private Dining, Full Buyout, Bar Packages)\"\n    },\n    \"primary_pain_point\": {\n      \"type\": \"string\",\n      \"description\": \"Specific operational bottleneck observed on their site (e.g. 'Requires downloading a static PDF packet with no instant pricing', 'Routes high-ticket event inquiries to a generic info@ email'). Do not write generic slogans.\"\n    },\n    \"icebreaker_angle\": {\n      \"type\": \"string\",\n      \"description\": \"A 1-2 sentence B2B cold email opener addressed to the venue's Event Director following our formula. Must reference a real venue detail and their manual inquiry friction. NEVER write ads for diners.\"\n    },\n    \"reasoning\": {\n      \"type\": \"string\",\n      \"description\": \"Detailed justification for the score\"\n    }\n  },\n  \"required\": [\"icp_score\", \"icp_qualified\", \"online_booking_present\", \"primary_pain_point\", \"icebreaker_angle\", \"reasoning\"]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1256,
+        328
+      ],
+      "id": "210af098-e2f4-4282-97ce-447e1008b871",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const rawText = $input.item.json.data || $input.item.json.body || '';\n\n// Keywords relevant to private dining and high-ticket catering\nconst eventKeywords = [\n  'private', 'event', 'dining', 'catering', 'banquet', 'buyout',\n  'room', 'capacity', 'guest', 'party', 'reception', 'corporate',\n  'inquiry', 'contact', 'book', 'reserve', 'space', 'package', 'pdf'\n];\n\n// Split text by paragraphs\nconst paragraphs = rawText.split(/\\n\\s*\\n/);\n\nconst relevantSections = [];\nlet totalChars = 0;\n\nfor (const p of paragraphs) {\n  const lower = p.toLowerCase();\n  const hasKeyword = eventKeywords.some(kw => lower.includes(kw));\n  const isJunk = lower.includes('cookie') || lower.includes('privacy policy') || lower.includes('all rights reserved');\n\n  if (hasKeyword && !isJunk) {\n    relevantSections.push(p.trim());\n    totalChars += p.length;\n    if (totalChars > 2500) break; // Hard cap at ~2,500 chars (approx. 500-600 tokens)\n  }\n}\n\n// Fallback to first 1,500 characters if no specific event keywords were mentioned\nconst distilledText = relevantSections.length > 0 \n  ? relevantSections.join('\\n\\n') \n  : rawText.substring(0, 1500);\n\nreturn {\n  json: {\n    ...$input.item.json,\n    distilled_content: distilledText,\n    original_char_count: rawText.length,\n    distilled_char_count: distilledText.length\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        96
+      ],
+      "id": "e893810e-226f-440a-8bf6-74d9d120ff76",
+      "name": "Distill Event Signal"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "269935b9-dced-4fbb-bd10-38ffd98aa274",
+              "leftValue": "={{ $json.output.icp_qualified }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1472,
+        96
+      ],
+      "id": "49af7e27-01ab-4ecc-85c1-f37b00f8f1fa",
+      "name": "Is Lead Qualified?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "outbound_companies",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Split In Batches').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "disqualified"
+            },
+            {
+              "fieldId": "icp_score",
+              "fieldValue": "={{ $json.output?.icp_score ?? $json.icp_score }}"
+            },
+            {
+              "fieldId": "icp_qualified",
+              "fieldValue": "false"
+            },
+            {
+              "fieldId": "icp_reasoning",
+              "fieldValue": "={{ $json.output?.reasoning ?? $json.icp_reasoning }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        192
+      ],
+      "id": "4b24b432-2d95-4023-a3a3-41196eebd9f2",
+      "name": "Update Supabase Disqualified",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "outbound_companies",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Split In Batches').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "qualified"
+            },
+            {
+              "fieldId": "icp_score",
+              "fieldValue": "={{ $json.output?.icp_score ?? $json.icp_score }}"
+            },
+            {
+              "fieldId": "icp_qualified",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "icp_reasoning",
+              "fieldValue": "={{ $json.output?.reasoning ?? $json.icp_reasoning }}"
+            },
+            {
+              "fieldId": "online_booking_present",
+              "fieldValue": "={{ $json.output?.online_booking_present ?? $json.online_booking_present }}"
+            },
+            {
+              "fieldId": "identified_pain_points",
+              "fieldValue": "={{ [$json.output?.primary_pain_point ?? $json.primary_pain_point] }}"
+            },
+            {
+              "fieldId": "icebreaker_angles",
+              "fieldValue": "={{ { primary: $json.output?.icebreaker_angle ?? $json.icebreaker_angle } }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        0
+      ],
+      "id": "d4b40e6a-73dc-454e-8f52-d85e4d4aafaf",
+      "name": "Update Supabase Qualified",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appYOUR_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYOUR_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Qualified Accounts & Leads",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID/tblYOUR_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Name": "={{ $('Split In Batches').item.json.company_name }}",
+            "Website": "={{ $('Split In Batches').item.json.website_url }}",
+            "City & State": "={{ $('Split In Batches').item.json.city }}, {{ $('Split In Batches').item.json.state }}",
+            "ICP Score": "={{ $('Is Lead Qualified?').item.json.output?.icp_score ?? $('Is Lead Qualified?').item.json.icp_score }}",
+            "Identified Pain Point": "={{ $('Is Lead Qualified?').item.json.output?.primary_pain_point ?? $('Is Lead Qualified?').item.json.primary_pain_point }}",
+            "AI Icebreaker Angle": "={{ $('Is Lead Qualified?').item.json.output?.icebreaker_angle ?? $('Is Lead Qualified?').item.json.icebreaker_angle }}",
+            "Supabase Company ID": "={{ $('Split In Batches').item.json.id }}",
+            "Outreach Status": "Queued in Instantly"
+          },
+          "matchingColumns": [
+            "Supabase Company ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "City & State",
+              "displayName": "City & State",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Target Vertical",
+              "displayName": "Target Vertical",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Luxury Venues",
+                  "value": "Luxury Venues"
+                },
+                {
+                  "name": "Corporate Catering",
+                  "value": "Corporate Catering"
+                },
+                {
+                  "name": "Private Dining",
+                  "value": "Private Dining"
+                },
+                {
+                  "name": "Hotel Hospitality",
+                  "value": "Hotel Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Verified Email",
+              "displayName": "Verified Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ICP Score",
+              "displayName": "ICP Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Catering Capabilities",
+              "displayName": "Catering Capabilities",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "options": [
+                {
+                  "name": "Private Dining Rooms",
+                  "value": "Private Dining Rooms"
+                },
+                {
+                  "name": "Full Buyout",
+                  "value": "Full Buyout"
+                },
+                {
+                  "name": "Off-Premise Catering",
+                  "value": "Off-Premise Catering"
+                },
+                {
+                  "name": "Bar Packages",
+                  "value": "Bar Packages"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Identified Pain Point",
+              "displayName": "Identified Pain Point",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "AI Icebreaker Angle",
+              "displayName": "AI Icebreaker Angle",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Deliverability Status",
+              "displayName": "Deliverability Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Valid (SMTP Confirmed)",
+                  "value": "Valid (SMTP Confirmed)"
+                },
+                {
+                  "name": "Catch-All",
+                  "value": "Catch-All"
+                },
+                {
+                  "name": "Invalid / Risky",
+                  "value": "Invalid / Risky"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outbound Campaign",
+              "displayName": "Outbound Campaign",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "CaterFlow_Chicago_Q4",
+                  "value": "CaterFlow_Chicago_Q4"
+                },
+                {
+                  "name": "FeastOps_Dallas_Venues",
+                  "value": "FeastOps_Dallas_Venues"
+                },
+                {
+                  "name": "Nexus_NYC_Hospitality",
+                  "value": "Nexus_NYC_Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outreach Status",
+              "displayName": "Outreach Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Queued in Instantly",
+                  "value": "Queued in Instantly"
+                },
+                {
+                  "name": "Email Sent",
+                  "value": "Email Sent"
+                },
+                {
+                  "name": "Opened",
+                  "value": "Opened"
+                },
+                {
+                  "name": "🔥 Replied - Interested",
+                  "value": "🔥 Replied - Interested"
+                },
+                {
+                  "name": "Meeting Booked",
+                  "value": "Meeting Booked"
+                },
+                {
+                  "name": "Unsubscribed",
+                  "value": "Unsubscribed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Supabase Company ID",
+              "displayName": "Supabase Company ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created Date",
+              "displayName": "Created Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Inbound Replies & Hot Leads",
+              "displayName": "Inbound Replies & Hot Leads",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        272
+      ],
+      "id": "de8ec55d-4ecf-4e6a-8b7a-9b9182ade937",
+      "name": "Sync to Airtable Cockpit",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        288
+      ],
+      "id": "c09c4fb5-7711-441f-9e92-c2ac90e2aac2",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "id": "0786e089-f359-4232-afbc-bfd0f6895dab",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        250
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "fa1a0f69-768a-4b16-8ba9-3c8208bcfb0a",
+      "name": "Trigger Phase 3 Enrichment",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        896,
+        288
+      ],
+      "parameters": {
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "cachedResultName": "ENT-02: 03 - Multi-Tier Waterfall Enrichment & Deliverability Engine",
+          "mode": "list",
+          "value": "WORKFLOW_ID_ent-02-03-multi-tier-waterfall-enrichmen"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Seeded Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Seeded Leads": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scrape Venue Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Venue Markdown": {
+      "main": [
+        [
+          {
+            "node": "Distill Event Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Is Lead Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Distill Event Signal": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Lead Qualified?": {
+      "main": [
+        [
+          {
+            "node": "Update Supabase Qualified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Supabase Disqualified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Supabase Qualified": {
+      "main": [
+        [
+          {
+            "node": "Sync to Airtable Cockpit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Supabase Disqualified": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync to Airtable Cockpit": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch Seeded Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Operation, do nothing": {
+      "main": [
+        [
+          {
+            "node": "Trigger Phase 3 Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
+    "saveDataErrorExecution": "all"
+  },
+  "active": false
+}

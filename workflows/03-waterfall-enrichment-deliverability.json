@@ -1,0 +1,923 @@
+{
+  "name": "ENT-02: 03 - Multi-Tier Waterfall Enrichment & Deliverability Engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        176
+      ],
+      "id": "7c016868-3b89-4160-b136-247e5595de2d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        448,
+        176
+      ],
+      "id": "b86bd5fe-9c4e-45e6-a10a-de815f7c0f36",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_companies",
+        "limit": 5,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "qualified"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        176
+      ],
+      "id": "ae3de3b7-8b7a-445d-baae-7f775ac37626",
+      "name": "Fetch Qualified Accounts",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://emailverifier.reoon.com/api/v1/verify",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "name": "key",
+              "value": "YOUR_REOON_API_KEY"
+            },
+            {
+              "name": "mode",
+              "value": "power"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "77565e10-3743-400b-90c2-cb4ded7357af",
+      "name": "Reoon Email Verification"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "01698147-f429-49fb-96c4-d4cc4b5fcf4a",
+              "name": "first_name",
+              "value": "={{ $json.data?.emails?.[0]?.first_name || 'Events' }}",
+              "type": "string"
+            },
+            {
+              "id": "629d023e-d0a7-4af4-ad9c-93a0209d4ade",
+              "name": "last_name",
+              "value": "={{ $json.data?.emails?.[0]?.last_name || 'Director' }}",
+              "type": "string"
+            },
+            {
+              "id": "e806f2f2-81d2-4e24-89dc-c3d2de39c147",
+              "name": "full_name",
+              "value": "={{ (($json.data?.emails?.[0]?.first_name || '') + ' ' + ($json.data?.emails?.[0]?.last_name || '')).trim() || 'Director of Private Events' }}",
+              "type": "string"
+            },
+            {
+              "id": "736612ed-5437-43a8-b4d1-851892573ec8",
+              "name": "email",
+              "value": "={{ ($json.data?.emails?.[0]?.email || (Array.isArray($json.emails) ? ($json.emails[0]?.value || $json.emails[0]) : '') || '').trim().toLowerCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "c2d5e449-b176-471a-a99c-42c1deb2d0ad",
+              "name": "job_title",
+              "value": "={{ $json.data?.emails?.[0]?.position || 'Director of Private Events' }}",
+              "type": "string"
+            },
+            {
+              "id": "df40a0e7-2e30-4997-8647-5c7d7460c59a",
+              "name": "enrichment_source",
+              "value": "={{ $json.data?.emails ? 'tomba' : 'apify' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "6feccdbb-504a-4066-9c80-58f2e1e096f7",
+      "name": "Normalize Contact Info"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "30dce00a-6f62-4707-9d65-60f674b0b32b",
+              "leftValue": "={{ $json.is_deliverable }}",
+              "rightValue": "{{ $json.status == 'valid' || $json.status == 'catch_all' }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1792,
+        0
+      ],
+      "id": "aada839c-8266-41cb-88d8-587ec9134340",
+      "name": "Is Email Valid?"
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_suppression",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "email_or_domain",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.email || $('Loop Over Items').item.json.domain }}"
+            },
+            {
+              "fieldId": "reason",
+              "fieldValue": "={{ 'Deliverability verification failed: ' + ($json.status || $json.deliverability || 'no_contact_found') }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.email ? 'email' : 'domain' }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        0
+      ],
+      "id": "4c05765c-c4c7-438f-99d9-a5f544143899",
+      "name": "Log to Supression List",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appYOUR_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "CaterFlow Outbound CRM",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYOUR_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Qualified Accounts & Leads",
+          "cachedResultUrl": "https://airtable.com/appYOUR_BASE_ID/tblYOUR_TABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Contact Name": "={{ $('Normalize Contact Info').item.json.full_name }}",
+            "Job Title": "={{ $('Normalize Contact Info').item.json.job_title }}",
+            "Verified Email": "={{ $('Normalize Contact Info').item.json.email }}",
+            "Deliverability Status": "Valid (SMTP Confirmed)",
+            "Supabase Company ID": "={{ $('Fetch Qualified Accounts').item.json.id }}"
+          },
+          "matchingColumns": [
+            "Supabase Company ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "City & State",
+              "displayName": "City & State",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Target Vertical",
+              "displayName": "Target Vertical",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Luxury Venues",
+                  "value": "Luxury Venues"
+                },
+                {
+                  "name": "Corporate Catering",
+                  "value": "Corporate Catering"
+                },
+                {
+                  "name": "Private Dining",
+                  "value": "Private Dining"
+                },
+                {
+                  "name": "Hotel Hospitality",
+                  "value": "Hotel Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Verified Email",
+              "displayName": "Verified Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ICP Score",
+              "displayName": "ICP Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Catering Capabilities",
+              "displayName": "Catering Capabilities",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "options": [
+                {
+                  "name": "Private Dining Rooms",
+                  "value": "Private Dining Rooms"
+                },
+                {
+                  "name": "Full Buyout",
+                  "value": "Full Buyout"
+                },
+                {
+                  "name": "Off-Premise Catering",
+                  "value": "Off-Premise Catering"
+                },
+                {
+                  "name": "Bar Packages",
+                  "value": "Bar Packages"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Identified Pain Point",
+              "displayName": "Identified Pain Point",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "AI Icebreaker Angle",
+              "displayName": "AI Icebreaker Angle",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Deliverability Status",
+              "displayName": "Deliverability Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Valid (SMTP Confirmed)",
+                  "value": "Valid (SMTP Confirmed)"
+                },
+                {
+                  "name": "Catch-All",
+                  "value": "Catch-All"
+                },
+                {
+                  "name": "Invalid / Risky",
+                  "value": "Invalid / Risky"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outbound Campaign",
+              "displayName": "Outbound Campaign",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "CaterFlow_Chicago_Q4",
+                  "value": "CaterFlow_Chicago_Q4"
+                },
+                {
+                  "name": "FeastOps_Dallas_Venues",
+                  "value": "FeastOps_Dallas_Venues"
+                },
+                {
+                  "name": "Nexus_NYC_Hospitality",
+                  "value": "Nexus_NYC_Hospitality"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Outreach Status",
+              "displayName": "Outreach Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Queued in Instantly",
+                  "value": "Queued in Instantly"
+                },
+                {
+                  "name": "Email Sent",
+                  "value": "Email Sent"
+                },
+                {
+                  "name": "Opened",
+                  "value": "Opened"
+                },
+                {
+                  "name": "🔥 Replied - Interested",
+                  "value": "🔥 Replied - Interested"
+                },
+                {
+                  "name": "Meeting Booked",
+                  "value": "Meeting Booked"
+                },
+                {
+                  "name": "Unsubscribed",
+                  "value": "Unsubscribed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Supabase Company ID",
+              "displayName": "Supabase Company ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created Date",
+              "displayName": "Created Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Inbound Replies & Hot Leads",
+              "displayName": "Inbound Replies & Hot Leads",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        288
+      ],
+      "id": "7a2f4445-5591-4036-96c4-a06a6d2402a6",
+      "name": "Update Airtable Contact Info",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_ME",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_contacts",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "company_id",
+              "fieldValue": "={{ $('Loop Over Items').item.json.id }}"
+            },
+            {
+              "fieldId": "first_name",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.first_name }}"
+            },
+            {
+              "fieldId": "last_name",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.last_name }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.email }}"
+            },
+            {
+              "fieldId": "job_title",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.job_title }}"
+            },
+            {
+              "fieldId": "deliverability_status",
+              "fieldValue": "valid"
+            },
+            {
+              "fieldId": "email_status",
+              "fieldValue": "verified"
+            },
+            {
+              "fieldId": "enrichment_source",
+              "fieldValue": "={{ $('Normalize Contact Info').item.json.enrichment_source }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        192
+      ],
+      "id": "ba0fd8c3-5d68-4097-910a-d30936d5dc6a",
+      "name": "Insert Verified Contact",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/run-sync-get-dataset-items",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "YOUR_APIFY_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"startUrls\": [\n    { \"url\": \"{{ $('Loop Over Items').item.json.clean_website_url || $('Loop Over Items').item.json.website_url }}\" }\n  ],\n  \"maxDepth\": 1\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "aada3663-0204-45be-8efc-a6baf3870600",
+      "name": "Apify Contact Scraper"
+    },
+    {
+      "parameters": {
+        "url": "https://api.tomba.io/v1/domain-search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $('Loop Over Items').item.json.domain }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomba-Key",
+              "value": "YOUR_TOMBA_KEY"
+            },
+            {
+              "name": "X-Tomba-Secret",
+              "value": "YOUR_TOMBA_SECRET"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "b4a53b01-2662-48e8-b613-b7d7c9547e4e",
+      "name": "Tomba Domain Fallback"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "f33b5d05-9f0f-4e40-b50c-fd65091aa667",
+              "leftValue": "={{ $json.data && $json.data.emails && $json.data.emails.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        896,
+        0
+      ],
+      "id": "e2600a8a-baea-4d7f-9d38-b15af18ea667",
+      "name": "Tomba Found Contact?"
+    },
+    {
+      "id": "f5993d73-af2e-4397-8d55-e66e65bf0511",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        50
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "e7b111f5-e3e5-42d5-9d33-1e62d8e2fa37",
+      "name": "Trigger Phase 4 Outreach",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        700,
+        40
+      ],
+      "parameters": {
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "cachedResultName": "ENT-02: 04 - Dynamic Icebreaker Matrix & Campaign Engine",
+          "mode": "list",
+          "value": "WORKFLOW_ID_ent-02-04-dynamic-icebreaker-matrix-camp"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Qualified Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Trigger Phase 4 Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tomba Domain Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Qualified Accounts": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reoon Email Verification": {
+      "main": [
+        [
+          {
+            "node": "Is Email Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Contact Info": {
+      "main": [
+        [
+          {
+            "node": "Reoon Email Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Email Valid?": {
+      "main": [
+        [
+          {
+            "node": "Insert Verified Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to Supression List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Supression List": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Airtable Contact Info": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Verified Contact": {
+      "main": [
+        [
+          {
+            "node": "Update Airtable Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Contact Scraper": {
+      "main": [
+        [
+          {
+            "node": "Normalize Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tomba Domain Fallback": {
+      "main": [
+        [
+          {
+            "node": "Tomba Found Contact?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tomba Found Contact?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apify Contact Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch Qualified Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
+    "saveDataErrorExecution": "all"
+  },
+  "active": false
+}
