@@ -511,10 +511,6 @@
         "headerParameters": {
           "parameters": [
             {
-              "name": "Authorization",
-              "value": "Bearer YOUR_SLACK_BOT_TOKEN"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json; charset=utf-8"
             }
@@ -526,7 +522,9 @@
         "sendBody": true,
         "sendHeaders": true,
         "specifyBody": "json",
-        "url": "https://slack.com/api/chat.postMessage"
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -535,7 +533,13 @@
         -112
       ],
       "id": "43284747-8a32-47c4-add1-a908b37cf467",
-      "name": "Dispatch Slack HITL Card"
+      "name": "Dispatch Slack HITL Card",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Slack Bot Token"
+        }
+      }
     },
     {
       "parameters": {

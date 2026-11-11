@@ -370,15 +370,7 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.apify.com/v2/actors/compass~crawler-google-places/run-sync-get-dataset-items",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "token",
-              "value": "YOUR_APIFY_TOKEN"
-            }
-          ]
-        },
+        "sendQuery": false,
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -391,7 +383,9 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"searchStringsArray\": [\"{{ $json.search_query }}\"],\n  \"locationQuery\": \"{{ $json.target_city }}\",\n  \"maxCrawledPlacesPerSearch\": {{ $json.batch_limit }},\n  \"language\": \"en\"\n}",
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -400,7 +394,13 @@
         560
       ],
       "id": "e967ab2e-a701-42fd-b693-84e36e22f2bd",
-      "name": "Scrape Maps"
+      "name": "Scrape Maps",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME",
+          "name": "Apify Token"
+        }
+      }
     },
     {
       "parameters": {
