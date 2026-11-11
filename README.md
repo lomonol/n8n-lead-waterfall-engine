@@ -35,44 +35,44 @@ The fix is not a better email. It is a **pipeline that refuses to waste effort**
 
 ```mermaid
 flowchart LR
-  subgraph P1[1. Ingestion gatekeeper]
-    S[Weekly schedule<br/>Apify Maps search] --> W
-    WH[POST /lead-intake] --> V{Secret valid?}
-    V -- no --> U[401]
-    V -- yes --> W[Normalize domains]
-    W --> D{Domain in ledger?}
-    D -- yes --> X[Drop duplicate]
-    D -- no --> I[(Insert, status: seeded)]
+  subgraph P1["Stage 1: Ingestion gatekeeper"]
+    S["Weekly schedule<br/>Apify Maps search"] --> W
+    WH["POST /lead-intake"] --> V{"Secret valid?"}
+    V -- no --> U["401"]
+    V -- yes --> W["Normalize domains"]
+    W --> D{"Domain in ledger?"}
+    D -- yes --> X["Drop duplicate"]
+    D -- no --> I[("Insert, status seeded")]
   end
   I --> P2
-  subgraph P2[2. AI website auditor]
-    J[Fetch site as markdown] --> DS[Distill event signal<br/>keyword filter, 2,500 char cap]
-    DS --> L[Local LLM: extract facts,<br/>pain point, icebreaker]
-    L --> SC[Code: compute score 0-100]
-    SC --> Q{Qualified?}
-    Q -- no --> DQ[(status: disqualified)]
-    Q -- yes --> QS[(status: qualified + Airtable cockpit)]
+  subgraph P2["Stage 2: AI website auditor"]
+    J["Fetch site as markdown"] --> DS["Distill event signal<br/>keyword filter, 2,500 char cap"]
+    DS --> L["Local LLM extracts facts,<br/>pain point, icebreaker"]
+    L --> SC["Code computes score 0-100"]
+    SC --> Q{"Qualified?"}
+    Q -- no --> DQ[("status disqualified")]
+    Q -- yes --> QS[("status qualified, Airtable cockpit")]
   end
   QS --> P3
-  subgraph P3[3. Waterfall enrichment]
-    T[Tomba domain search] --> TF{Found a contact?}
-    TF -- no --> A[Apify contact scraper]
-    TF -- yes --> N[Normalize]
+  subgraph P3["Stage 3: Waterfall enrichment"]
+    T["Tomba domain search"] --> TF{"Found a contact?"}
+    TF -- no --> A["Apify contact scraper"]
+    TF -- yes --> N["Normalize"]
     A --> N
-    N --> R[Reoon verification]
-    R --> RV{Deliverable?}
-    RV -- no --> SUP[(Suppression list)]
-    RV -- yes --> C[(Insert verified contact)]
+    N --> R["Reoon verification"]
+    R --> RV{"Deliverable?"}
+    RV -- no --> SUP[("Suppression list")]
+    RV -- yes --> C[("Insert verified contact")]
   end
-  C --> P4[4. Icebreaker + campaign engine<br/>build payload, send via Resend, log]
-  P4 -.reply.-> P5
-  subgraph P5[5. Reply triage]
-    G[Gmail trigger / reply webhook] --> F{Campaign reply?}
-    F --> K[Local LLM: intent]
-    K --> RT{Route}
-    RT -- interested --> H["Ledger + Airtable row, then Slack approval card"]
-    RT -- unsubscribe --> US[(Auto-suppress + mark unsubscribed)]
-    RT -- other --> LG[(Log)]
+  C --> P4["Stage 4: Icebreaker and campaign engine<br/>suppression gate, approval, cap, send, log"]
+  P4 -. reply .-> P5
+  subgraph P5["Stage 5: Reply triage"]
+    G["Gmail trigger or reply webhook"] --> F{"Campaign reply?"}
+    F --> K["Local LLM classifies intent"]
+    K --> RT{"Route"}
+    RT -- interested --> H["Ledger and Airtable row, then Slack approval card"]
+    RT -- unsubscribe --> US[("Auto-suppress, mark unsubscribed")]
+    RT -- other --> LG[("Log")]
   end
 ```
 
@@ -189,9 +189,17 @@ Each stage was tested on synthetic data, with no real prospect contacted. Scorin
 | 2. Website audit | 40-site stratified sample of well-known venue and non-venue sites | 7 of 40 qualified, all of them venues; 0 of 16 non-venue and fast-casual sites qualified (highest non-venue score 30, venues up to 90) |
 | 3. Enrichment | 10 live accounts through Tomba, the Apify fallback and Reoon | 8 of 10 yielded a candidate address (5 from Tomba, 3 from the fallback); every candidate was verified, 2 were accepted and 6 were suppressed with a reason |
 | 4. Campaign engine | 100 synthetic contacts through the send gate | 12 of 12 suppressed addresses blocked (10 by domain, 2 by exact address); the daily cap held the batch at 5; 0 suppressed addresses reached the batch; gate time about 3 s |
-| 5. Reply triage | 60 synthetic replies: interested, objection, out of office, unsubscribe and adversarial | 54 of 55 labelled replies classified correctly; 15 of 15 unsubscribes routed to suppression; 0 of 40 other replies suppressed; 0 of 10 adversarial replies reached the hot-lead route (8 went to human review, 2 were genuine opt-outs) |
+| 5. Reply triage | 60 synthetic replies: 15 interested, 15 objections, 10 out of office, 15 unsubscribes, 5 adversarial | 54 of 55 labelled replies classified correctly; 15 of 15 unsubscribes routed to suppression; 0 of 40 other replies suppressed; 15 of 15 interested replies routed to a person; 60 of 60 parsed, confidence 0.80 to 1.0; about 10 s per reply |
+| 5. Injection guard | 20 replies: 10 with instructions aimed at the model, 10 normal | 0 of 10 adversarial replies reached the hot-lead route (8 went to human review, 2 were genuine opt-outs); 10 of 10 normal replies routed correctly |
 
-**Test conditions.** Synthetic inputs and well-known sites, one run per stage, so the rates are indicative, not statistical. In the stage 4 run the approval email was replaced by an automatic approval and the sender was log-only apart from one real email to the author. In stage 5 the ledger, CRM and chat writes were logged rather than executed. The stage 5 injection guard was tuned on its adversarial set, so the human approval before any send remains the final control.
+**Test conditions.** Synthetic inputs and well-known sites, one run per stage, so the rates are indicative, not statistical. In the stage 4 run the approval email was replaced by an automatic approval and the sender was log-only apart from one real email to the author. In stage 5 the ledger, CRM and chat writes were logged rather than executed.
+
+### What did not go perfectly
+
+- **Stage 2: hotels were missed.** 7 of 24 venue sites qualified. All 8 large hotel sites scored below the cut-off because only the homepage is fetched and hotels publish event details on separate pages. Fetching an events or private-dining page as well is the next lever. The 7 qualifiers were not checked by hand.
+- **Stage 3: 2 of 8 candidates were deliverable.** Enterprise mail servers often answer verification with `unknown`, which the design suppresses rather than risks. In the test run the domain search was called without pacing and was rate-limited on 5 of 10 accounts (the fallback recovered 3); this export spaces the calls 3 seconds apart with retries, and that paced flow has not been re-run against the live providers.
+- **Stage 5: one intent miss and a prompt-injection weakness.** "Try us in January" was read as out-of-office instead of an objection (both go to the non-urgent log). In the 60-reply run, 2 of 2 explicit injections ("ignore all previous instructions...") were classified as interested at full confidence. The prompt now marks the email as untrusted and a pattern guard sends instruction-like replies to human review (the second stage 5 row). The guard was tuned on that adversarial set, so unseen phrasings may pass; the human approval before any send stays the final control.
+- **Not measured:** the low-confidence review route on genuine replies (no reply in the 60 scored below 0.7), the campaign-ID write-back that prevents double sends on a re-run, and real writes in stage 5.
 
 [`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1 if you want to repeat the ingestion checks.
 
@@ -213,7 +221,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 | **Reply classes** | Interested, objection, out of office, unsubscribe | Add or rename; update the Switch. |
 | **Schedule and batch size** | Weekly, 5 places | Any. |
 
-## What this demonstrates
+## Skills used
 
 - **Pipeline design ordered by cost**, with idempotency enforced in a database.
 - **Local LLM use** with a rubric, a typed schema and pre-processing to control tokens.
@@ -238,7 +246,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 ### Run it yourself
 1. Import the six workflows into n8n. All are exported **inactive**.
 2. Replace every placeholder (`REPLACE_ME`, `YOUR_*`, `WORKFLOW_ID_*`), re-select credentials, and re-link the Execute Workflow nodes and the Error workflow setting to your imported copies.
-3. Create the four Supabase tables and the Airtable cockpit, then run [`schema/migrations.sql`](schema/migrations.sql). Pull a Qwen 2.5 model into Ollama.
+3. Create the four Supabase tables and the Airtable cockpit, then run [`schema/migrations.sql`](schema/migrations.sql). Pull a Qwen 2.5 model into Ollama. Submit only leads that have a website: the intake does not reject an empty domain.
 4. Send the sample payload:
 
    ```bash
