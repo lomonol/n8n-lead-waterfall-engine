@@ -14,8 +14,6 @@
 
 > **Resend was used for testing only.** Every send in this build went to my own address through Resend's sandbox. Do not use Resend for production cold outreach: it is a transactional email service, and sending unsolicited outreach through it violates Resend's terms of use. Swap the sender (see [Configuration and swap-ins](#configuration-and-swap-ins)) for a cold-email-appropriate provider or your own warmed mailbox before sending to real prospects.
 
-> **If you only read one section:** [Why this is interesting](#why-this-is-interesting) and [Decision log](#decision-log).
-
 ---
 
 ## The problem
@@ -30,13 +28,6 @@ The fix is not a better email. It is a **pipeline that refuses to waste effort**
 - Fit is judged by a **local LLM** (no per-token cost, no lead data leaves my infrastructure) against an explicit 0-100 rubric, and only qualifying companies reach the paid enrichment stage.
 - Contacts come from a **waterfall of providers** and every address is verified before it can be sent to. Failures are written to a suppression table, not retried forever.
 - Replies are classified by intent; hot leads go to Slack for a human, unsubscribes are suppressed automatically.
-
-## Why this is interesting
-
-1. **The funnel is ordered by cost.** Free checks first (dedupe), then local-LLM scoring, then paid enrichment and verification, then email. Each stage protects the next from wasted spend.
-2. **Five small workflows, not one giant one.** Each stage is independently testable, replaceable and re-runnable, chained with Execute Workflow.
-3. **Compliance is a pipeline stage, not an afterthought.** Suppression is written by both the verifier and the reply triager.
-4. **Humans gate the risky steps.** Outbound sends need an approval and a daily cap, low-confidence replies go to a person, and unsubscribes always suppress.
 
 ---
 
