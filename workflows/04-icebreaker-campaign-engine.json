@@ -23,6 +23,11 @@
               "keyName": "deliverability_status",
               "condition": "eq",
               "keyValue": "valid"
+            },
+            {
+              "keyName": "assigned_campaign_id",
+              "condition": "is",
+              "keyValue": "null"
             }
           ]
         }
@@ -52,7 +57,7 @@
             {
               "keyName": "id",
               "condition": "eq",
-              "keyValue": "={{ $json.company_id }}"
+              "keyValue": "={{ $('Fetch Verified Contacts').item.json.company_id }}"
             }
           ]
         }
@@ -60,8 +65,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        448,
-        0
+        896,
+        -96
       ],
       "id": "905120ba-a204-4332-a54d-a281af10aa53",
       "name": "Get Company Dossier",
@@ -125,8 +130,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.5,
       "position": [
-        672,
-        0
+        1120,
+        -96
       ],
       "id": "3434ad6d-7993-4507-a2df-599e2773b99b",
       "name": "Build Outreach Payload"
@@ -145,8 +150,8 @@
       "type": "n8n-nodes-resend.resend",
       "typeVersion": 2,
       "position": [
-        896,
-        0
+        1344,
+        -96
       ],
       "id": "b73a6427-53cb-459e-bbc8-13a1ba02af52",
       "name": "Send a new email",
@@ -190,8 +195,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1120,
-        0
+        1568,
+        -96
       ],
       "id": "1bf24d70-7f27-4441-ae8a-4ea459d47fcc",
       "name": "Update a row",
@@ -537,8 +542,8 @@
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.2,
       "position": [
-        1344,
-        0
+        1792,
+        -96
       ],
       "id": "621c110d-48dd-4bac-a6c8-e2307a660594",
       "name": "Create or update a record",
@@ -561,6 +566,63 @@
         0,
         -96
       ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_suppression",
+        "limit": 1,
+        "filterType": "string",
+        "filterString": "=email_or_domain=in.({{ $json.email }},{{ $json.email.split('@')[1] }})"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a01",
+      "name": "Check Suppression List",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1a2b3d4-0001-4000-8000-000000000001",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a02",
+      "name": "Not Suppressed?"
     }
   ],
   "connections": {
@@ -579,7 +641,7 @@
       "main": [
         [
           {
-            "node": "Get Company Dossier",
+            "node": "Check Suppression List",
             "type": "main",
             "index": 0
           }
@@ -639,6 +701,29 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "Check Suppression List": {
+      "main": [
+        [
+          {
+            "node": "Not Suppressed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not Suppressed?": {
+      "main": [
+        [
+          {
+            "node": "Get Company Dossier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },

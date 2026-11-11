@@ -193,8 +193,8 @@ Airtable holds the human-facing cockpit (qualified accounts, hot leads) and the 
 Findings from auditing my own build, in priority order:
 
 1. **Campaign sends have no human gate or daily cap.** Stage 4 sends everything it loads. Reply handling has a human in the loop; outbound does not. Add an approval step and a per-day cap before activating.
-2. **Re-runs can double-send.** Stage 4 loads every contact with `deliverability_status = valid` and does not exclude contacts that already have a campaign ID. Filter on `assigned_campaign_id is null`.
-3. **Suppression is not re-checked at send time.** An address suppressed after verification (for example an unsubscribe) could still be loaded. Check the suppression table in stage 4.
+2. ~~**Re-runs can double-send.**~~ **Fixed in the workflow, not yet run-tested.** Stage 4 now loads only contacts where `assigned_campaign_id is null`, so a re-run skips contacts that were already sent.
+3. ~~**Suppression is not re-checked at send time.**~~ **Fixed in the workflow, not yet run-tested.** A `Check Suppression List` lookup (email or domain, against `outbound_suppression`) and a `Not Suppressed?` IF now sit between the contact fetch and the send. Suppressed contacts stop there. I could not execute it end to end: the test run would write to the real database and send through Resend, so it was blocked. It is wired and saved, nothing more.
 4. **A decision that belongs in code is in the prompt.** `icp_qualified` is decided by the model from a "70 or above" instruction. I should compute it from `icp_score` in an IF node, as I did in the [incident platform](https://github.com/lomonol/n8n-ai-incident-escalation-platform).
 5. **Dedupe is check-then-insert.** Two simultaneous submissions of one domain could both pass. Add a unique index on `domain` and treat the conflict as "duplicate".
 6. **Confidence is returned but unused.** The reply classifier emits `confidence_score`, yet routing ignores it. Low-confidence results should go to a human instead of auto-routing, especially for `UNSUBSCRIBE`.
