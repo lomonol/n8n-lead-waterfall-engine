@@ -83,7 +83,7 @@ flowchart LR
 | 1 | **Ingestion gatekeeper** | Two entry points: a weekly scheduled Maps search and an authenticated webhook. Validates the secret, lowercases the domain and strips protocol and `www.`, checks Supabase for that domain, inserts new ones with status `seeded`. | Dedupe happens before any scrape, LLM or paid API call. The scheduled search pipes its results into the same webhook, so there is exactly one door. |
 | 2 | **AI website auditor** | Fetches each `seeded` company's site as markdown, reduces it to the paragraphs that matter, has a local LLM extract facts, computes the score in a Code node, writes `qualified` or `disqualified`, syncs qualified accounts to an Airtable cockpit. | Scoring before enrichment means paid contact lookups only run on companies that fit. |
 | 3 | **Waterfall enrichment** | For each qualified account: domain search, fall back to a contact-page scraper if that finds nothing, then verify the address. Valid becomes a contact; invalid is suppressed. | One provider failing or returning nothing does not stop the run, and no unverified address reaches the sender. |
-| 4 | **Campaign engine** | Loads verified contacts that have no campaign yet, drops any on the suppression list, asks a person to approve the batch by email, applies a daily cap, then joins the company dossier (including the icebreaker the auditor wrote), builds the payload, sends, stamps the campaign ID back on the contact, and upserts the cockpit row. | Nothing sends without approval, re-runs never double-send, and the personalisation was generated in stage 2, so sending is a cheap deterministic step. |
+| 4 | **Campaign engine** | Loads verified contacts that have no campaign yet, drops any whose email or domain is on the suppression list (the list is fetched once and every contact is matched individually in a Code node), asks a person to approve the batch by email, applies a daily cap, then joins the company dossier (including the icebreaker the auditor wrote), builds the payload, sends, stamps the campaign ID back on the contact, and upserts the cockpit row. | Nothing sends without approval, re-runs never double-send, and the personalisation was generated in stage 2, so sending is a cheap deterministic step. |
 | 5 | **Reply triage** | Receives replies from a webhook or a Gmail trigger, ignores personal mail, classifies intent, routes. | Replies arrive from several sources; one normaliser feeds one classifier. |
 | - | **Global error handler** | Logs failures to a dead-letter table and alerts DevOps. | Unattended pipelines must say when they break. |
 
@@ -163,6 +163,7 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 | Email fails verification | Suppressed with a reason, never sent to |
 | Workflow re-run | Contacts that already have a campaign ID are skipped |
 | Contact suppressed after verification | Suppression list is checked again before the send |
+| One suppressed contact among several in a batch | Matched individually: that contact is dropped, the others continue |
 | Prospect asks to be removed | Auto-suppressed and marked in the CRM |
 | Any workflow throws | Global error handler logs to DLQ and alerts DevOps |
 

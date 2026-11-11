@@ -568,79 +568,30 @@
       ]
     },
     {
-      "parameters": {
-        "operation": "getAll",
-        "tableId": "outbound_suppression",
-        "limit": 1,
-        "filterType": "string",
-        "filterString": "=email_or_domain=in.({{ $json.email }},{{ $json.email.split('@')[1] }})"
-      },
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        448,
-        0
-      ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a01",
-      "name": "Check Suppression List",
-      "credentials": {
-        "supabaseApi": {
-          "id": "REPLACE_ME",
-          "name": "CaterFlow Outbound DB"
-        }
-      },
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "c1a2b3d4-0001-4000-8000-000000000001",
-              "leftValue": "={{ $json.id }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "empty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        672,
-        0
-      ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a02",
-      "name": "Not Suppressed?"
-    },
-    {
-      "parameters": {
-        "jsCode": "const contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst ok = $input.all().map(i => contacts[idx(i)].json);\nconst lines = ok.map(c => `- ${c.first_name || ''} ${c.last_name || ''} <${c.email}>`.replace('-  ', '- '));\nreturn [{ json: { count: ok.length, summary: lines.join('\\n') } }];"
-      },
+      "id": "7d5a8bfb-92ed-48f1-9f8e-06829c579dc3",
+      "name": "Build Approval Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         896,
         0
       ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a03",
-      "name": "Build Approval Summary"
+      "parameters": {
+        "jsCode": "const contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst ok = $input.all().map(i => contacts[idx(i)].json);\nconst lines = ok.map(c => `- ${c.first_name || ''} ${c.last_name || ''} <${c.email}>`.replace('-  ', '- '));\nreturn [{ json: { count: ok.length, summary: lines.join('\\n') } }];"
+      }
     },
     {
+      "id": "e91d1f8e-cc3a-49e6-8b27-23af59f05f29",
+      "name": "Request Send Approval",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
       "parameters": {
         "operation": "sendAndWait",
-        "sendTo": "YOUR_APPROVER_EMAIL",
+        "sendTo": "you@example.com",
         "subject": "=Approve outreach send: {{ $json.count }} contact(s)",
         "message": "=This run will send the first-touch email to {{ $json.count }} verified, non-suppressed contact(s):\n\n{{ $json.summary }}\n\nApprove to send (subject to the daily cap), or disapprove to stop.",
         "responseType": "approval",
@@ -651,14 +602,6 @@
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.2,
-      "position": [
-        1120,
-        0
-      ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a05",
-      "name": "Request Send Approval",
       "credentials": {
         "gmailOAuth2": {
           "id": "REPLACE_ME",
@@ -667,6 +610,14 @@
       }
     },
     {
+      "id": "6fd559bd-79f3-4715-980d-617935ce5aa6",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        0
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -689,28 +640,57 @@
           "combinator": "and"
         },
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1344,
-        0
-      ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a06",
-      "name": "Approved?"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "const DAILY_CAP = 5;\nconst contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst picked = $('Not Suppressed?').all().map(i => contacts[idx(i)].json);\nconst sd = $getWorkflowStaticData('global');\nconst today = new Date().toISOString().slice(0, 10);\nif (sd.day !== today) { sd.day = today; sd.sent = 0; }\nconst room = Math.max(0, DAILY_CAP - sd.sent);\nconst batch = picked.slice(0, room);\nsd.sent += batch.length;\nreturn batch.map(json => ({ json }));"
-      },
+      "id": "02f7d3eb-b4fc-43f4-80db-2b3226c17a1e",
+      "name": "Apply Daily Cap and Restore Batch",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1568,
         -96
       ],
-      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a04",
-      "name": "Apply Daily Cap and Restore Batch"
+      "parameters": {
+        "jsCode": "const DAILY_CAP = 5;\nconst contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst picked = $('Filter Suppressed Contacts').all().map(i => contacts[idx(i)].json);\nconst sd = $getWorkflowStaticData('global');\nconst today = new Date().toISOString().slice(0, 10);\nif (sd.day !== today) { sd.day = today; sd.sent = 0; }\nconst room = Math.max(0, DAILY_CAP - sd.sent);\nconst batch = picked.slice(0, room);\nsd.sent += batch.length;\nreturn batch.map(json => ({ json }));"
+      }
+    },
+    {
+      "id": "5c58d81a-cd37-4eba-ae4d-d3d5995f41d7",
+      "name": "Fetch Suppression List",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "outbound_suppression",
+        "returnAll": true
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "id": "7db8f07c-e44b-4da6-b7ba-28539dbf43ce",
+      "name": "Filter Suppressed Contacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const contacts = $('Fetch Verified Contacts').all();\nconst sup = new Set($input.all().map(i => String(i.json.email_or_domain || '').toLowerCase()).filter(Boolean));\nconst out = [];\ncontacts.forEach((c, idx) => {\n  const e = String(c.json.email || '').toLowerCase();\n  const d = e.split('@')[1] || '';\n  if (!sup.has(e) && !sup.has(d)) out.push({ json: c.json, pairedItem: { item: idx } });\n});\nreturn out;"
+      }
     }
   ],
   "connections": {
@@ -719,17 +699,6 @@
         [
           {
             "node": "Fetch Verified Contacts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Verified Contacts": {
-      "main": [
-        [
-          {
-            "node": "Check Suppression List",
             "type": "main",
             "index": 0
           }
@@ -791,29 +760,6 @@
         ]
       ]
     },
-    "Check Suppression List": {
-      "main": [
-        [
-          {
-            "node": "Not Suppressed?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Not Suppressed?": {
-      "main": [
-        [
-          {
-            "node": "Build Approval Summary",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
     "Build Approval Summary": {
       "main": [
         [
@@ -844,8 +790,7 @@
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     },
     "Apply Daily Cap and Restore Batch": {
@@ -858,14 +803,46 @@
           }
         ]
       ]
+    },
+    "Fetch Verified Contacts": {
+      "main": [
+        [
+          {
+            "node": "Fetch Suppression List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Suppression List": {
+      "main": [
+        [
+          {
+            "node": "Filter Suppressed Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Suppressed Contacts": {
+      "main": [
+        [
+          {
+            "node": "Build Approval Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true,
-    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
-    "saveDataErrorExecution": "all"
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-"
   },
   "active": false
 }
