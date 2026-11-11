@@ -11,6 +11,7 @@
 | **Scale** | 6 workflows (5 stages plus a global error handler), 87 nodes, 4 Supabase tables, 3 enrichment/verification providers |
 | **Stack** | n8n, Ollama (Qwen 2.5, local), Supabase, Airtable, Apify, Tomba, Reoon, Resend, Gmail, Slack |
 | **Status** | Every stage tested on synthetic data (results below); no real prospect contacted |
+| **Results** | On synthetic data: 12 of 12 suppressed contacts blocked before sending, 54 of 55 reply intents classified correctly, 9 of 9 duplicate leads dropped |
 
 > **Resend was used for testing only.** Every send in this build went to my own address through Resend's sandbox. Do not use Resend for production cold outreach: it is a transactional email service, and sending unsolicited outreach through it violates Resend's terms of use. Swap the sender (see [Configuration and swap-ins](#configuration-and-swap-ins)) for a cold-email-appropriate provider or your own warmed mailbox before sending to real prospects.
 
