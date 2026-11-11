@@ -29,7 +29,7 @@
           "conditions": [
             {
               "id": "d63f36be-25d6-44b0-ad86-b29a84db3f1c",
-              "leftValue": "={{ $('Lead Intake Webhook').item.json.headers['x-caterflow-secret-key'] }}",
+              "leftValue": "={{ $('Lead Intake Webhook').item.json.headers['x-intake-secret'] }}",
               "rightValue": "YOUR_SHARED_SECRET",
               "operator": {
                 "type": "string",
@@ -410,7 +410,7 @@
         "headerParameters": {
           "parameters": [
             {
-              "name": "X-CaterFlow-Secret-Key",
+              "name": "X-Intake-Secret",
               "value": "YOUR_SHARED_SECRET"
             },
             {
@@ -437,7 +437,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\n  \"error\": \"Unauthorized\",\n  \"message\": \"Invalid or missing X-CaterFlow-Secret-Key header. Lead batch rejected.\"\n}\n",
+        "responseBody": "={\n  \"error\": \"Unauthorized\",\n  \"message\": \"Invalid or missing X-Intake-Secret header. Lead batch rejected.\"\n}\n",
         "options": {
           "responseCode": 401
         }

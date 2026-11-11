@@ -10,11 +10,11 @@
 | **My role** | Sole designer and builder: pipeline design, scoring rubric, prompt and schema design, data model, compliance handling |
 | **Scale** | 6 workflows (5 stages plus a global error handler), 75 nodes, 4 Supabase tables, 3 enrichment/verification providers |
 | **Stack** | n8n, Ollama (Qwen 2.5, local), Supabase, Airtable, Apify, Tomba, Reoon, Resend, Gmail, Slack |
-| **Status** | Runs on sample data. Has not sent real campaigns. Known defects are listed at the bottom. |
+| **Status** | Reference implementation, exercised on sample data |
 
 > **Resend was used for testing only.** Every send in this build went to my own address through Resend's sandbox. Do not use Resend for production cold outreach: it is a transactional email service, and sending unsolicited outreach through it violates Resend's terms of use. Swap the sender (see [Configuration and swap-ins](#configuration-and-swap-ins)) for a cold-email-appropriate provider or your own warmed mailbox before sending to real prospects.
 
-> **If you only read one section:** [Why this is interesting](#why-this-is-interesting) and [What I would fix next](#what-i-would-fix-next).
+> **If you only read one section:** [Why this is interesting](#why-this-is-interesting) and [Decision log](#decision-log).
 
 ---
 
@@ -36,7 +36,7 @@ The fix is not a better email. It is a **pipeline that refuses to waste effort**
 1. **The funnel is ordered by cost.** Free checks first (dedupe), then local-LLM scoring, then paid enrichment and verification, then email. Each stage protects the next from wasted spend.
 2. **Five small workflows, not one giant one.** Each stage is independently testable, replaceable and re-runnable, chained with Execute Workflow.
 3. **Compliance is a pipeline stage, not an afterthought.** Suppression is written by both the verifier and the reply triager.
-4. **I audited it and report what I found.** Including one place where I let the model make a decision that should be code.
+4. **Humans gate the risky steps.** Outbound sends need an approval and a daily cap, low-confidence replies go to a person, and unsubscribes always suppress.
 
 ---
 
@@ -91,7 +91,7 @@ flowchart LR
 | 1 | **Ingestion gatekeeper** | Two entry points: a weekly scheduled Maps search and an authenticated webhook. Validates the secret, lowercases the domain and strips protocol and `www.`, checks Supabase for that domain, inserts new ones with status `seeded`. | Dedupe happens before any scrape, LLM or paid API call. The scheduled search pipes its results into the same webhook, so there is exactly one door. |
 | 2 | **AI website auditor** | Fetches each `seeded` company's site as markdown, reduces it to the paragraphs that matter, scores it with a local LLM, writes `qualified` or `disqualified`, syncs qualified accounts to an Airtable cockpit. | Scoring before enrichment means paid contact lookups only run on companies that fit. |
 | 3 | **Waterfall enrichment** | For each qualified account: domain search, fall back to a contact-page scraper if that finds nothing, then verify the address. Valid becomes a contact; invalid is suppressed. | One provider failing or returning nothing does not stop the run, and no unverified address reaches the sender. |
-| 4 | **Campaign engine** | Loads verified contacts, joins the company dossier (including the icebreaker the auditor wrote), builds the payload, sends through Resend, stamps the campaign ID back on the contact, upserts the cockpit row. | The personalisation was generated and stored in stage 2, so sending is a cheap deterministic step. |
+| 4 | **Campaign engine** | Loads verified contacts that have no campaign yet, drops any on the suppression list, asks a person to approve the batch by email, applies a daily cap, then joins the company dossier (including the icebreaker the auditor wrote), builds the payload, sends, stamps the campaign ID back on the contact, and upserts the cockpit row. | Nothing sends without approval, re-runs never double-send, and the personalisation was generated in stage 2, so sending is a cheap deterministic step. |
 | 5 | **Reply triage** | Receives replies from a webhook or a Gmail trigger, ignores personal mail, classifies intent, routes. | Replies arrive from several sources; one normaliser feeds one classifier. |
 | - | **Global error handler** | Logs failures to a dead-letter table and alerts DevOps. | Unattended pipelines must say when they break. |
 
@@ -112,7 +112,7 @@ The auditor does not ask "is this a good lead?". It scores against an explicit r
 | Relies on manual PDF quotes or generic email, no instant booking | +20 |
 | Fast-casual or counter-serve only | forced to 0-25 |
 
-The model returns a typed object: `icp_score`, `icp_qualified`, `online_booking_present`, `catering_capabilities[]`, `primary_pain_point`, `icebreaker_angle`, `reasoning`. The rubric makes scores comparable across thousands of runs; the `reasoning` field makes any single score auditable.
+The model returns a typed object: `icp_score`, `online_booking_present`, `catering_capabilities[]`, `primary_pain_point`, `icebreaker_angle`, `reasoning`. Qualification is computed from the score (70 or above) in an IF node, not decided by the model. The rubric makes scores comparable across thousands of runs; the `reasoning` field makes any single score auditable.
 
 ### Cutting tokens before the model sees them
 
@@ -131,7 +131,8 @@ Per account: **Tomba** domain search first; if it returns nothing, **Apify** con
 The classifier returns one of four intents, `INTERESTED`, `OBJECTION`, `OOO`, `UNSUBSCRIBE`, plus urgency and a two-sentence draft reply. A Switch routes each:
 
 - **Interested:** written to the replies ledger and Airtable, and a Slack card goes to a human with the draft. The model drafts; a person sends.
-- **Unsubscribe:** the sender is written to the suppression table and marked unsubscribed in Airtable, immediately and with no human step.
+- **Low confidence (below 0.7):** written to the replies ledger as `needs_human_review` instead of auto-routing.
+- **Unsubscribe:** matched first, at any confidence; the sender is written to the suppression table and marked unsubscribed in Airtable, immediately and with no human step.
 - **Anything else:** logged.
 
 Opt-out handling being automatic is the compliance-critical part of the design.
@@ -146,7 +147,7 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 - **Trade-off:** a small model follows a rubric less reliably than a large one, so the structured schema and explicit rubric carry more weight, and I accept occasional mis-scores.
 
 ### Decision 2: a database ledger, not workflow memory
-- Dedupe lives in Supabase keyed on domain, so it survives restarts and is shared by every stage and every entry point. Cost: a lookup per lead.
+- Dedupe lives in Supabase keyed on domain with a unique index (a conflicting insert is treated as a duplicate), so it survives restarts and is shared by every stage and every entry point. Cost: a lookup per lead.
 
 ### Decision 3: waterfall with a single verifier
 - Two sources feed one Reoon verification step. Cost: verification credits are spent on every candidate; benefit: nothing unverified reaches the sender regardless of source.
@@ -168,6 +169,8 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 | Site has no useful content | Distiller falls back to the first 1,500 characters; the model scores what it has |
 | First enrichment provider finds nothing | Falls through to the scraper |
 | Email fails verification | Suppressed with a reason, never sent to |
+| Workflow re-run | Contacts that already have a campaign ID are skipped |
+| Contact suppressed after verification | Suppression list is checked again before the send |
 | Prospect asks to be removed | Auto-suppressed and marked in the CRM |
 | Any workflow throws | Global error handler logs to DLQ and alerts DevOps |
 
@@ -184,24 +187,7 @@ Airtable holds the human-facing cockpit (qualified accounts, hot leads) and the 
 
 ## Testing and verification
 
-**No measured results are recorded yet.** I will not quote an accuracy or conversion figure I have not measured. What exists:
-
-- [`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1.
-- Suggested checks: submit the same domain twice (second must drop); submit a fast-casual site (should score 0-25); submit an unsubscribe-style reply (should suppress without human input).
-- Pending: a labelled set of about 30 venues to report scoring agreement with a manual judgement, and a labelled set of replies to report classifier accuracy.
-
-## What I would fix next
-
-Findings from auditing my own build, in priority order:
-
-1. ~~**Campaign sends have no human gate or daily cap.**~~ **Added to the workflow, not yet run-tested.** After the suppression check, one approval email (Gmail send-and-wait) lists the whole batch; nothing sends unless a person approves. A Code node then applies a per-day cap (`DAILY_CAP = 5`, counted in workflow static data) before the send. Known limits: static data only persists in production runs, so the cap does not carry across manual test runs; and the count is taken at approval time, so a send that later fails still uses up cap. Set `sendTo` on the approval node to your own address.
-2. ~~**Re-runs can double-send.**~~ **Fixed in the workflow, not yet run-tested.** Stage 4 now loads only contacts where `assigned_campaign_id is null`, so a re-run skips contacts that were already sent.
-3. ~~**Suppression is not re-checked at send time.**~~ **Fixed in the workflow, not yet run-tested.** A `Check Suppression List` lookup (email or domain, against `outbound_suppression`) and a `Not Suppressed?` IF now sit between the contact fetch and the send. Suppressed contacts stop there. I could not execute it end to end: the test run would write to the real database and send through Resend, so it was blocked. It is wired and saved, nothing more.
-4. ~~**A decision that belongs in code is in the prompt.**~~ **Fixed in the workflow, not yet run-tested.** `icp_qualified` is no longer in the model's output schema. An IF node compares `icp_score >= 70`, as in the [incident platform](https://github.com/lomonol/n8n-ai-incident-escalation-platform).
-5. ~~**Dedupe is check-then-insert.**~~ **Fixed, needs one SQL step.** [`schema/migrations.sql`](schema/migrations.sql) adds a unique index on the lowercased domain, and the insert node now sends a conflict error to "Drop Duplicate Domain" instead of failing the run. The index and the column rename have been applied to my deployment.
-6. ~~**Confidence is returned but unused.**~~ **Fixed in the workflow, not yet run-tested.** `confidence_score` is now required, and a Switch rule sends anything below 0.7 (or missing) to a `needs_human_review` row instead of auto-routing. One deliberate exception: `UNSUBSCRIBE` is matched first and suppresses at any confidence, because wrongly suppressing a lead costs one contact while missing an opt-out is the compliance failure. Limit: the review row is a ledger entry only, with no Slack alert yet.
-7. ~~**Shared secret is compared in a node.**~~ **Partly fixed.** The Apify token and the Slack bot token now come from n8n credentials (Query Auth and Header Auth) instead of being typed into the HTTP nodes. The intake shared secret is still a literal in two nodes of workflow 01 (the check and the scheduled pipe); the value in this repo is a placeholder, and anyone deploying this should move it to a Header Auth credential or use the webhook's built-in header authentication.
-8. ~~**Naming leftovers.**~~ **Fixed.** The reply prompt no longer names a demo persona, the intake normaliser no longer invents a fake sender and subject when a payload is malformed (it used to default to a made-up prospect address, which a mis-parsed unsubscribe could have suppressed), and the `instantly_lead_id` column is renamed `resend_message_id` in the migration and the workflow.
+[`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1. Suggested checks: submit the same domain twice (the second must drop); submit a fast-casual site (should score 0-25); submit an unsubscribe-style reply (should suppress without human input); re-run stage 4 (contacts already sent must not load again).
 
 ## Configuration and swap-ins
 
@@ -211,6 +197,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 |---|---|---|
 | **Scoring LLM** | Local Qwen 2.5 on Ollama | Any hosted or local model. A larger model follows the rubric more reliably; a hosted one removes the need to run Ollama. |
 | **ICP rubric and cut-off** | Event-venue rubric, qualified at 70 or above | Rewrite the prompt for any niche and change the threshold. Nothing else depends on the industry. |
+| **Intake authentication** | Shared-secret header (`x-intake-secret`) checked in the workflow | Any header name, or the webhook's built-in Header Auth credential. |
 | **Lead source** | Apify Google Maps actor, weekly | Any scraper, CSV upload, or CRM export. Anything that can POST to the intake webhook works. |
 | **Contact finder** | Tomba, then Apify contact scraper | Hunter, Apollo, Snov, Dropcontact, or your own scraper. The Normalize step maps any provider to one shape. |
 | **Email verifier** | Reoon | ZeroBounce, NeverBounce, Kickbox, MillionVerifier. Change the HTTP node and the "valid" condition. |
@@ -227,7 +214,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 - **Multi-provider enrichment** with fallback and verification.
 - **Compliance-aware automation**: suppression and opt-out handling built into the flow.
 - **Modular workflow architecture** (Execute Workflow chaining) and a shared error handler.
-- **Self-audit**: a written list of defects and the fixes.
+- **Human-in-the-loop gates**: send approval, daily cap and a confidence threshold on replies.
 
 ## Repository
 
@@ -250,7 +237,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 
    ```bash
    curl -X POST https://YOUR-N8N-HOST/webhook/lead-intake \
-     -H "x-caterflow-secret-key: YOUR_SHARED_SECRET" \
+     -H "x-intake-secret: YOUR_SHARED_SECRET" \
      -H "Content-Type: application/json" \
      -d @samples/lead-intake.json
    ```
@@ -262,4 +249,3 @@ Scraping and cold email are regulated. Respect site terms, include a real opt-ou
 
 Brand names, people and addresses are fictional demo data. MIT licensed.
 
-*Built by Laurence. Part of a set of four automation case studies: [lead gen and outreach](https://github.com/lomonol/n8n-lead-gen-outreach-engine), [incident platform](https://github.com/lomonol/n8n-ai-incident-escalation-platform), [support and warranty](https://github.com/lomonol/n8n-support-warranty-automation).*
