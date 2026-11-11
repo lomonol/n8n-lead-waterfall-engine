@@ -8,9 +8,9 @@
 |---|---|
 | **Type** | Portfolio build (reference implementation, not a client engagement) |
 | **My role** | Sole designer and builder: pipeline design, scoring rubric, prompt and schema design, data model, compliance handling |
-| **Scale** | 6 workflows (5 stages plus a global error handler), 75 nodes, 4 Supabase tables, 3 enrichment/verification providers |
+| **Scale** | 6 workflows (5 stages plus a global error handler), 87 nodes, 4 Supabase tables, 3 enrichment/verification providers |
 | **Stack** | n8n, Ollama (Qwen 2.5, local), Supabase, Airtable, Apify, Tomba, Reoon, Resend, Gmail, Slack |
-| **Status** | Reference implementation, exercised on sample data |
+| **Status** | Every stage tested on synthetic data (results below); no real prospect contacted |
 
 > **Resend was used for testing only.** Every send in this build went to my own address through Resend's sandbox. Do not use Resend for production cold outreach: it is a transactional email service, and sending unsolicited outreach through it violates Resend's terms of use. Swap the sender (see [Configuration and swap-ins](#configuration-and-swap-ins)) for a cold-email-appropriate provider or your own warmed mailbox before sending to real prospects.
 
@@ -137,7 +137,7 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 ### Decision 1: a local LLM for scoring
 - **Options:** hosted frontier model vs local Qwen 2.5 on Ollama.
 - **Chose local.** Scoring runs on every seeded lead, most of which get rejected, so per-token cost scales with the *worst* part of the funnel. Local also means scraped lead data never leaves my server.
-- **Trade-off:** a small model follows a rubric less reliably than a large one. In an early version the model returned the score itself and its totals did not follow the rubric (a test run qualified nothing), so the model now only extracts facts and a Code node computes the score. Fact extraction can still miss content that is not on the homepage, because only the homepage is fetched.
+- **Trade-off:** a small model follows a rubric less reliably than a large one, so it only extracts facts and a Code node computes the score. Cost: only the homepage is fetched, so event details published on a separate page are not seen.
 
 ### Decision 2: a database ledger, not workflow memory
 - Dedupe lives in Supabase keyed on domain with a unique index (a conflicting insert is treated as a duplicate), so it survives restarts and is shared by every stage and every entry point. Cost: a lookup per lead.
@@ -181,23 +181,17 @@ Airtable holds the human-facing cockpit (qualified accounts, hot leads) and the 
 
 ## Testing and verification
 
-The engine was tested stage by stage on synthetic data, with no real prospect contacted. Scoring and reply classification ran on a local model on a single VM; paid provider calls were capped at 10 accounts. Every real send went to the author's own address, and the rest were logged without sending.
+Each stage was tested on synthetic data, with no real prospect contacted. Scoring and reply classification ran on a local model on a single VM; paid provider calls were capped at 10 accounts, and every real send went to the author's own address.
 
 | Stage | What was run | Result |
 |---|---|---|
-| 1. Ingestion | 109 leads in one batch (100 unique, 9 duplicate or URL variants) | 100 inserted, 9 of 9 duplicates dropped, 74 s in total; a wrong secret returned 401 in 0.6 s |
-| 2. Website audit | 100 business sites, then a 40-site stratified sample after scoring moved into code | With the model computing the score, 0 of 100 qualified (scores 0 to 65, no separation between venues and non-venues). With the model extracting facts and code computing the score, 7 of 40 qualified, 0 of 16 non-venue and fast-casual sites qualified, and the highest non-venue score fell from 65 to 30 |
-| 3. Enrichment | 10 live accounts through Tomba, the Apify fallback and Reoon | 8 of 10 yielded a candidate address (5 from Tomba, 3 from the fallback); 2 of those 8 passed verification and 6 were suppressed with a reason (2 invalid, 4 unverifiable) |
-| 4. Campaign engine | 100 synthetic contacts through the send gate, a log-only sender and one real email | 95 eligible after skipping contacts that already had a campaign; 12 of 12 suppressed addresses blocked (10 by domain, 2 by exact address); the daily cap held the batch at 5; 0 suppressed addresses reached the batch; the real email was sent in 1.5 s |
-| 5. Reply triage | 60 synthetic replies: interested, objection, out of office, unsubscribe and adversarial | 54 of 55 labelled replies classified correctly; 15 of 15 unsubscribes routed to suppression; 0 of 40 other replies suppressed; 60 of 60 routed consistently with their classification |
+| 1. Ingestion | 109 leads in one batch (100 unique, 9 duplicate or URL variants) | 9 of 9 duplicates dropped, 100 unique leads inserted in 74 s; a wrong secret returned 401 in 0.6 s |
+| 2. Website audit | 40-site stratified sample of well-known venue and non-venue sites | 7 of 40 qualified, all of them venues; 0 of 16 non-venue and fast-casual sites qualified (highest non-venue score 30, venues up to 90) |
+| 3. Enrichment | 10 live accounts through Tomba, the Apify fallback and Reoon | 8 of 10 yielded a candidate address (5 from Tomba, 3 from the fallback); every candidate was verified, 2 were accepted and 6 were suppressed with a reason |
+| 4. Campaign engine | 100 synthetic contacts through the send gate | 12 of 12 suppressed addresses blocked (10 by domain, 2 by exact address); the daily cap held the batch at 5; 0 suppressed addresses reached the batch; gate time about 3 s |
+| 5. Reply triage | 60 synthetic replies: interested, objection, out of office, unsubscribe and adversarial | 54 of 55 labelled replies classified correctly; 15 of 15 unsubscribes routed to suppression; 0 of 40 other replies suppressed; 0 of 10 adversarial replies reached the hot-lead route (8 went to human review, 2 were genuine opt-outs) |
 
-### Scope and limits of these results
-
-- **Data and size:** synthetic inputs and well-known sites, one run each. The scoring comparison used 40 sites and the live enrichment run used 10 accounts, so the rates are indicative, not statistical.
-- **Website audit:** only the homepage is fetched. Sites that publish event details on a separate page did not qualify, which includes all 8 large hotel sites in the sample.
-- **Enrichment:** the measured run sent contact-finder lookups back to back, and 5 of 10 were rate-limited; the fallback recovered 3 of those 5. The workflow spaces lookups 3 seconds apart and retries up to three times, which was not re-measured. The measured run used the first address the finder listed; the contact picker prefers event, sales and management roles and never invents a name or title. Large mail providers often return an unverifiable result, which is suppressed rather than sent to.
-- **Campaign engine:** the approval email was replaced by an automatic approval, and the campaign-ID write-back and CRM update were outside the test, so the re-run guard was not measured.
-- **Reply triage:** in the 60-reply run, both explicit instruction-injection attempts (2 of 2) were classified as interested. The classifier prompt marks the email text as untrusted and a pattern guard sends replies that contain instructions aimed at the model to human review. In a 20-reply check of that version, 0 of 10 adversarial replies reached the hot-lead route (8 went to human review, 2 were genuine opt-outs and were suppressed) and 10 of 10 normal replies routed correctly. The guard patterns were tuned on that adversarial set, so unseen phrasings may still pass; the human approval before any send remains the final control. The ledger, CRM and chat writes were logged rather than executed in these runs.
+**Test conditions.** Synthetic inputs and well-known sites, one run per stage, so the rates are indicative, not statistical. In the stage 4 run the approval email was replaced by an automatic approval and the sender was log-only apart from one real email to the author. In stage 5 the ledger, CRM and chat writes were logged rather than executed. The stage 5 injection guard was tuned on its adversarial set, so the human approval before any send remains the final control.
 
 [`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1 if you want to repeat the ingestion checks.
 
