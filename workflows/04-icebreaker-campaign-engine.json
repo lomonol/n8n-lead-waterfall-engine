@@ -57,7 +57,7 @@
             {
               "keyName": "id",
               "condition": "eq",
-              "keyValue": "={{ $('Fetch Verified Contacts').item.json.company_id }}"
+              "keyValue": "={{ $json.company_id }}"
             }
           ]
         }
@@ -65,7 +65,7 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        896,
+        1792,
         -96
       ],
       "id": "905120ba-a204-4332-a54d-a281af10aa53",
@@ -84,19 +84,19 @@
             {
               "id": "0e56824d-ab4b-4e2c-af99-4b4fabb60fec",
               "name": "email",
-              "value": "={{ $('Fetch Verified Contacts').item.json.email }}",
+              "value": "={{ $('Apply Daily Cap and Restore Batch').item.json.email }}",
               "type": "string"
             },
             {
               "id": "17cf67f6-383b-433a-b5ae-8a36fc731269",
               "name": "first_name",
-              "value": "={{ $('Fetch Verified Contacts').item.json.first_name }}",
+              "value": "={{ $('Apply Daily Cap and Restore Batch').item.json.first_name }}",
               "type": "string"
             },
             {
               "id": "40ffa35f-d6af-491d-a436-b56c47655e55",
               "name": "last_name",
-              "value": "={{ $('Fetch Verified Contacts').item.json.last_name }}",
+              "value": "={{ $('Apply Daily Cap and Restore Batch').item.json.last_name }}",
               "type": "string"
             },
             {
@@ -130,7 +130,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.5,
       "position": [
-        1120,
+        2016,
         -96
       ],
       "id": "3434ad6d-7993-4507-a2df-599e2773b99b",
@@ -150,7 +150,7 @@
       "type": "n8n-nodes-resend.resend",
       "typeVersion": 2,
       "position": [
-        1344,
+        2240,
         -96
       ],
       "id": "b73a6427-53cb-459e-bbc8-13a1ba02af52",
@@ -171,7 +171,7 @@
             {
               "keyName": "id",
               "condition": "eq",
-              "keyValue": "={{ $('Fetch Verified Contacts').item.json.id }}"
+              "keyValue": "={{ $('Apply Daily Cap and Restore Batch').item.json.id }}"
             }
           ]
         },
@@ -195,7 +195,7 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1568,
+        2464,
         -96
       ],
       "id": "1bf24d70-7f27-4441-ae8a-4ea459d47fcc",
@@ -542,7 +542,7 @@
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.2,
       "position": [
-        1792,
+        2688,
         -96
       ],
       "id": "621c110d-48dd-4bac-a6c8-e2307a660594",
@@ -623,6 +623,94 @@
       ],
       "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a02",
       "name": "Not Suppressed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst ok = $input.all().map(i => contacts[idx(i)].json);\nconst lines = ok.map(c => `- ${c.first_name || ''} ${c.last_name || ''} <${c.email}>`.replace('-  ', '- '));\nreturn [{ json: { count: ok.length, summary: lines.join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a03",
+      "name": "Build Approval Summary"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "YOUR_APPROVER_EMAIL",
+        "subject": "=Approve outreach send: {{ $json.count }} contact(s)",
+        "message": "=This run will send the first-touch email to {{ $json.count }} verified, non-suppressed contact(s):\n\n{{ $json.summary }}\n\nApprove to send (subject to the daily cap), or disapprove to stop.",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a05",
+      "name": "Request Send Approval",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1a2b3d4-0002-4000-8000-000000000002",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a06",
+      "name": "Approved?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const DAILY_CAP = 5;\nconst contacts = $('Fetch Verified Contacts').all();\nconst idx = (i) => (typeof i.pairedItem === 'number' ? i.pairedItem : i.pairedItem.item);\nconst picked = $('Not Suppressed?').all().map(i => contacts[idx(i)].json);\nconst sd = $getWorkflowStaticData('global');\nconst today = new Date().toISOString().slice(0, 10);\nif (sd.day !== today) { sd.day = today; sd.sent = 0; }\nconst room = Math.max(0, DAILY_CAP - sd.sent);\nconst batch = picked.slice(0, room);\nsd.sent += batch.length;\nreturn batch.map(json => ({ json }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -96
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a04",
+      "name": "Apply Daily Cap and Restore Batch"
     }
   ],
   "connections": {
@@ -718,12 +806,57 @@
       "main": [
         [
           {
-            "node": "Get Company Dossier",
+            "node": "Build Approval Summary",
             "type": "main",
             "index": 0
           }
         ],
         []
+      ]
+    },
+    "Build Approval Summary": {
+      "main": [
+        [
+          {
+            "node": "Request Send Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Send Approval": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Apply Daily Cap and Restore Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Apply Daily Cap and Restore Batch": {
+      "main": [
+        [
+          {
+            "node": "Get Company Dossier",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
