@@ -88,17 +88,18 @@
         96
       ],
       "id": "66ff77b9-0ce9-49fa-9b03-c55214a702ee",
-      "name": "Scrape Venue Markdown"
+      "name": "Scrape Venue Markdown",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "=VENUE TARGET:\nName: {{ $('Split In Batches').item.json.company_name }}\nCity: {{ $('Split In Batches').item.json.city }}, {{ $('Split In Batches').item.json.state }}\nWebsite: {{ $('Split In Batches').item.json.website_url }}\n\nSCRAPED WEBSITE CONTENT:\n{{ $json.distilled_content || 'No event content found' }}\n",
+        "text": "=VENUE TARGET:\nWebsite: {{ $('Split In Batches').item.json.website_url }}\nCity: {{ $('Split In Batches').item.json.city }}, {{ $('Split In Batches').item.json.state }}\n\nSCRAPED WEBSITE CONTENT:\n{{ $json.distilled_content || 'No event content found' }}\n",
         "hasOutputParser": true,
         "messages": {
           "messageValues": [
             {
-              "message": "You are the Chief Underwriting & Outbound Strategist for CaterFlow AI. \nWe are a B2B agency that helps high-end restaurants and venues automate their private event bookings.\n\nCRITICAL PERSPECTIVE RULES:\n- SENDER: CaterFlow AI (Outbound Growth Agency)\n- RECIPIENT: The General Manager or Director of Events at the venue.\n- NEVER write marketing copy to attract diners or customers.\n- NEVER act like an event guest asking to book a party.\n- YOU ARE PITCHING THE VENUE OWNER ON STREAMLINING THEIR PRIVATE EVENT INQUIRIES.\n\nICEBREAKER FORMULA (Must be 1-2 punchy sentences):\n[Specific compliment on a venue room/amenity found in text] + [Observation that event booking requires manual inquiries/PDFs, causing lost corporate revenue].\n\nFEW-SHOT EXAMPLES:\n- Good: \"Loved the layout of Sepia's private dining room—noticed group inquiries still require downloading a static PDF menu, which usually costs Chicago venues 3-4 corporate bookings a month in delayed reply time.\"\n- Good: \"Saw that Quadrangle Club hosts academic gatherings and private buyouts—noticed inquiries are routed through a generic contact form without instant pricing, creating a bottleneck during peak banquet season.\"\n- BAD (DO NOT DO THIS): \"Join the vibrant atmosphere at Sepia for unforgettable food!\" (Reason: Customer ad)\n- BAD (DO NOT DO THIS): \"Would you like a quote for your next event?\" (Reason: Acting like a guest)\n\nICP FIT RUBRIC (0 to 100 Score):\n- Private Event Rooms / Dedicated Banquet Space (+30 pts)\n- Group capacity >= 20 seated or 40 standing (+20 pts)\n- Dedicated events/catering menu or buyout packages (+20 pts)\n- Inquiry form or event contact present (+10 pts)\n- Lacks instant booking / relies on manual PDF quotes or generic emails (+20 pts)\n- Fast casual / counter-serve only (Automatic Score: 0-25)"
+              "message": "You are the Chief Underwriting & Outbound Strategist for CaterFlow AI. \nWe are a B2B agency that helps high-end restaurants and venues automate their private event bookings.\n\nYOUR JOB: read the scraped website content and report FACTS about the venue as the structured fields requested. Do NOT compute any score; a separate step does that. Report only what the text supports; answer false or 0 when the text does not say.\n\nCRITICAL PERSPECTIVE RULES:\n- SENDER: CaterFlow AI (Outbound Growth Agency)\n- RECIPIENT: The General Manager or Director of Events at the venue.\n- NEVER write marketing copy to attract diners or customers.\n- NEVER act like an event guest asking to book a party.\n- YOU ARE PITCHING THE VENUE OWNER ON STREAMLINING THEIR PRIVATE EVENT INQUIRIES.\n\nICEBREAKER FORMULA (Must be 1-2 punchy sentences):\n[Specific compliment on a venue room/amenity found in text] + [Observation that event booking requires manual inquiries/PDFs, causing lost corporate revenue].\n\nFEW-SHOT EXAMPLES:\n- Good: \"Loved the layout of Sepia's private dining room—noticed group inquiries still require downloading a static PDF menu, which usually costs Chicago venues 3-4 corporate bookings a month in delayed reply time.\"\n- Good: \"Saw that Quadrangle Club hosts academic gatherings and private buyouts—noticed inquiries are routed through a generic contact form without instant pricing, creating a bottleneck during peak banquet season.\"\n- BAD (DO NOT DO THIS): \"Join the vibrant atmosphere at Sepia for unforgettable food!\" (Reason: Customer ad)\n- BAD (DO NOT DO THIS): \"Would you like a quote for your next event?\" (Reason: Acting like a guest)"
             }
           ]
         },
@@ -111,7 +112,8 @@
         96
       ],
       "id": "8f38bfe5-44dd-4911-beeb-8d3e3c13d0a7",
-      "name": "Basic LLM Chain"
+      "name": "Basic LLM Chain",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -136,7 +138,7 @@
     {
       "parameters": {
         "schemaType": "manual",
-        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"icp_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 100 ICP fit score based on private dining and catering capability\"\n    },\n    \"online_booking_present\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the venue has instant online private event booking\"\n    },\n    \"catering_capabilities\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"description\": \"List of event capabilities found (e.g. Private Dining, Full Buyout, Bar Packages)\"\n    },\n    \"primary_pain_point\": {\n      \"type\": \"string\",\n      \"description\": \"Specific operational bottleneck observed on their site (e.g. 'Requires downloading a static PDF packet with no instant pricing', 'Routes high-ticket event inquiries to a generic info@ email'). Do not write generic slogans.\"\n    },\n    \"icebreaker_angle\": {\n      \"type\": \"string\",\n      \"description\": \"A 1-2 sentence B2B cold email opener addressed to the venue's Event Director following our formula. Must reference a real venue detail and their manual inquiry friction. NEVER write ads for diners.\"\n    },\n    \"reasoning\": {\n      \"type\": \"string\",\n      \"description\": \"Detailed justification for the score\"\n    }\n  },\n  \"required\": [\"icp_score\", \"online_booking_present\", \"primary_pain_point\", \"icebreaker_angle\", \"reasoning\"]\n}"
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"has_private_event_space\":{\"type\":\"boolean\",\"description\":\"True if the site mentions private dining rooms, banquet rooms, event rooms or dedicated event space\"},\"max_group_capacity\":{\"type\":\"number\",\"description\":\"Largest seated group capacity stated for any event space, or 0 if none is stated\"},\"has_events_menu_or_buyout\":{\"type\":\"boolean\",\"description\":\"True if the site has an events or catering menu, event packages, or full buyout packages\"},\"has_inquiry_form_or_event_contact\":{\"type\":\"boolean\",\"description\":\"True if there is an event inquiry form or an event contact email or phone\"},\"relies_on_manual_quotes\":{\"type\":\"boolean\",\"description\":\"True if events are booked through PDF packets, a generic contact form or generic email with no instant online booking or pricing\"},\"is_fast_casual_only\":{\"type\":\"boolean\",\"description\":\"True if the business is only a counter-serve or fast casual brand with no event hosting\"},\"primary_pain_point\":{\"type\":\"string\",\"description\":\"Specific operational bottleneck observed on their site. Do not write generic slogans.\"},\"icebreaker_angle\":{\"type\":\"string\",\"description\":\"A 1-2 sentence B2B cold email opener addressed to the venue Event Director following our formula. Must reference a real venue detail and their manual inquiry friction. NEVER write ads for diners.\"},\"reasoning\":{\"type\":\"string\",\"description\":\"One or two sentences naming the evidence for the facts above\"}},\"required\":[\"has_private_event_space\",\"max_group_capacity\",\"has_events_menu_or_buyout\",\"has_inquiry_form_or_event_contact\",\"relies_on_manual_quotes\",\"is_fast_casual_only\",\"primary_pain_point\",\"icebreaker_angle\",\"reasoning\"]}"
       },
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
@@ -173,7 +175,7 @@
           "conditions": [
             {
               "id": "269935b9-dced-4fbb-bd10-38ffd98aa274",
-              "leftValue": "={{ Number($json.output.icp_score) }}",
+              "leftValue": "={{ Number($json.icp_score) }}",
               "rightValue": 70,
               "operator": {
                 "type": "number",
@@ -215,7 +217,7 @@
             },
             {
               "fieldId": "icp_score",
-              "fieldValue": "={{ $json.output?.icp_score ?? $json.icp_score }}"
+              "fieldValue": "={{ $json.icp_score ?? 0 }}"
             },
             {
               "fieldId": "icp_qualified",
@@ -223,7 +225,7 @@
             },
             {
               "fieldId": "icp_reasoning",
-              "fieldValue": "={{ $json.output?.reasoning ?? $json.icp_reasoning }}"
+              "fieldValue": "={{ $json.reasoning ?? 'no model output' }}"
             }
           ]
         }
@@ -264,7 +266,7 @@
             },
             {
               "fieldId": "icp_score",
-              "fieldValue": "={{ $json.output?.icp_score ?? $json.icp_score }}"
+              "fieldValue": "={{ $json.icp_score }}"
             },
             {
               "fieldId": "icp_qualified",
@@ -272,19 +274,19 @@
             },
             {
               "fieldId": "icp_reasoning",
-              "fieldValue": "={{ $json.output?.reasoning ?? $json.icp_reasoning }}"
+              "fieldValue": "={{ $json.reasoning }}"
             },
             {
               "fieldId": "online_booking_present",
-              "fieldValue": "={{ $json.output?.online_booking_present ?? $json.online_booking_present }}"
+              "fieldValue": "={{ !$json.relies_on_manual_quotes }}"
             },
             {
               "fieldId": "identified_pain_points",
-              "fieldValue": "={{ [$json.output?.primary_pain_point ?? $json.primary_pain_point] }}"
+              "fieldValue": "={{ [$json.primary_pain_point] }}"
             },
             {
               "fieldId": "icebreaker_angles",
-              "fieldValue": "={{ { primary: $json.output?.icebreaker_angle ?? $json.icebreaker_angle } }}"
+              "fieldValue": "={{ { primary: $json.icebreaker_angle } }}"
             }
           ]
         }
@@ -702,6 +704,20 @@
           "value": "WORKFLOW_ID_ent-02-03-multi-tier-waterfall-enrichmen"
         }
       }
+    },
+    {
+      "id": "afa57190-c451-418a-8746-93b6425979fb",
+      "name": "Compute ICP Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        96
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const o = $input.item.json.output || {};\nconst ok = $input.item.json.output !== undefined;\nlet score = 0;\nif (o.has_private_event_space === true) score += 30;\nif (Number(o.max_group_capacity) >= 20) score += 20;\nif (o.has_events_menu_or_buyout === true) score += 20;\nif (o.has_inquiry_form_or_event_contact === true) score += 10;\nif (o.relies_on_manual_quotes === true) score += 20;\nif (o.is_fast_casual_only === true) score = Math.min(score, 25);\nreturn { json: { ...o, icp_score: score, scored_by: ok ? 'code' : 'no-model-output', model_ok: ok } };"
+      }
     }
   ],
   "connections": {
@@ -750,17 +766,6 @@
         [
           {
             "node": "Distill Event Signal",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Basic LLM Chain": {
-      "main": [
-        [
-          {
-            "node": "Is Lead Qualified?",
             "type": "main",
             "index": 0
           }
@@ -872,14 +877,35 @@
           }
         ]
       ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Compute ICP Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute ICP Score": {
+      "main": [
+        [
+          {
+            "node": "Is Lead Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true,
-    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
-    "saveDataErrorExecution": "all"
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-"
   },
   "active": false
 }

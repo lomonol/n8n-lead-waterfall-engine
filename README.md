@@ -25,7 +25,7 @@ The fix is not a better email. It is a **pipeline that refuses to waste effort**
 ## Outcome
 
 - A company is processed **once**, enforced by a database ledger keyed on its domain.
-- Fit is judged by a **local LLM** (no per-token cost, no lead data leaves my infrastructure) against an explicit 0-100 rubric, and only qualifying companies reach the paid enrichment stage.
+- Fit is judged against an explicit 0-100 rubric: a **local LLM** extracts facts from the site (no per-token cost, no lead data leaves my infrastructure) and a Code node adds up the points, and only qualifying companies reach the paid enrichment stage.
 - Contacts come from a **waterfall of providers** and every address is verified before it can be sent to. Failures are written to a suppression table, not retried forever.
 - Replies are classified by intent; hot leads go to Slack for a human, unsubscribes are suppressed automatically.
 
@@ -47,8 +47,9 @@ flowchart LR
   I --> P2
   subgraph P2[2. AI website auditor]
     J[Fetch site as markdown] --> DS[Distill event signal<br/>keyword filter, 2,500 char cap]
-    DS --> L[Local LLM: rubric score 0-100,<br/>pain point, icebreaker]
-    L --> Q{Qualified?}
+    DS --> L[Local LLM: extract facts,<br/>pain point, icebreaker]
+    L --> SC[Code: compute score 0-100]
+    SC --> Q{Qualified?}
     Q -- no --> DQ[(status: disqualified)]
     Q -- yes --> QS[(status: qualified + Airtable cockpit)]
   end
@@ -80,7 +81,7 @@ flowchart LR
 | # | Workflow | What it does | Why it is built this way |
 |---|---|---|---|
 | 1 | **Ingestion gatekeeper** | Two entry points: a weekly scheduled Maps search and an authenticated webhook. Validates the secret, lowercases the domain and strips protocol and `www.`, checks Supabase for that domain, inserts new ones with status `seeded`. | Dedupe happens before any scrape, LLM or paid API call. The scheduled search pipes its results into the same webhook, so there is exactly one door. |
-| 2 | **AI website auditor** | Fetches each `seeded` company's site as markdown, reduces it to the paragraphs that matter, scores it with a local LLM, writes `qualified` or `disqualified`, syncs qualified accounts to an Airtable cockpit. | Scoring before enrichment means paid contact lookups only run on companies that fit. |
+| 2 | **AI website auditor** | Fetches each `seeded` company's site as markdown, reduces it to the paragraphs that matter, has a local LLM extract facts, computes the score in a Code node, writes `qualified` or `disqualified`, syncs qualified accounts to an Airtable cockpit. | Scoring before enrichment means paid contact lookups only run on companies that fit. |
 | 3 | **Waterfall enrichment** | For each qualified account: domain search, fall back to a contact-page scraper if that finds nothing, then verify the address. Valid becomes a contact; invalid is suppressed. | One provider failing or returning nothing does not stop the run, and no unverified address reaches the sender. |
 | 4 | **Campaign engine** | Loads verified contacts that have no campaign yet, drops any on the suppression list, asks a person to approve the batch by email, applies a daily cap, then joins the company dossier (including the icebreaker the auditor wrote), builds the payload, sends, stamps the campaign ID back on the contact, and upserts the cockpit row. | Nothing sends without approval, re-runs never double-send, and the personalisation was generated in stage 2, so sending is a cheap deterministic step. |
 | 5 | **Reply triage** | Receives replies from a webhook or a Gmail trigger, ignores personal mail, classifies intent, routes. | Replies arrive from several sources; one normaliser feeds one classifier. |
@@ -92,7 +93,7 @@ flowchart LR
 
 ### The scoring rubric
 
-The auditor does not ask "is this a good lead?". It scores against an explicit rubric the model must follow:
+The auditor does not ask "is this a good lead?". It scores against an explicit rubric, and the points are added up in code, not by the model:
 
 | Signal | Points |
 |---|---|
@@ -103,7 +104,7 @@ The auditor does not ask "is this a good lead?". It scores against an explicit r
 | Relies on manual PDF quotes or generic email, no instant booking | +20 |
 | Fast-casual or counter-serve only | forced to 0-25 |
 
-The model returns a typed object: `icp_score`, `online_booking_present`, `catering_capabilities[]`, `primary_pain_point`, `icebreaker_angle`, `reasoning`. Qualification is computed from the score (70 or above) in an IF node, not decided by the model. The rubric makes scores comparable across thousands of runs; the `reasoning` field makes any single score auditable.
+The model does not produce the score. It returns typed facts: `has_private_event_space`, `max_group_capacity`, `has_events_menu_or_buyout`, `has_inquiry_form_or_event_contact`, `relies_on_manual_quotes`, `is_fast_casual_only`, plus `primary_pain_point`, `icebreaker_angle` and `reasoning`. A Code node (`Compute ICP Score`) applies the points above, and qualification (70 or above) is an IF node on that number. A small local model reports what a page says far more reliably than it adds up points, so the arithmetic lives in code: the same facts always give the same score, scores stay comparable across runs, and the `reasoning` field makes any single score auditable.
 
 ### Cutting tokens before the model sees them
 
@@ -135,7 +136,7 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 ### Decision 1: a local LLM for scoring
 - **Options:** hosted frontier model vs local Qwen 2.5 on Ollama.
 - **Chose local.** Scoring runs on every seeded lead, most of which get rejected, so per-token cost scales with the *worst* part of the funnel. Local also means scraped lead data never leaves my server.
-- **Trade-off:** a small model follows a rubric less reliably than a large one, so the structured schema and explicit rubric carry more weight, and I accept occasional mis-scores.
+- **Trade-off:** a small model follows a rubric less reliably than a large one. In an early version the model returned the score itself and its totals did not follow the rubric (a test run qualified nothing), so the model now only extracts facts and a Code node computes the score. Fact extraction can still miss content that is not on the homepage, because only the homepage is fetched.
 
 ### Decision 2: a database ledger, not workflow memory
 - Dedupe lives in Supabase keyed on domain with a unique index (a conflicting insert is treated as a duplicate), so it survives restarts and is shared by every stage and every entry point. Cost: a lookup per lead.
