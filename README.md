@@ -180,7 +180,25 @@ Airtable holds the human-facing cockpit (qualified accounts, hot leads) and the 
 
 ## Testing and verification
 
-[`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1. Suggested checks: submit the same domain twice (the second must drop); submit a fast-casual site (should score 0-25); submit an unsubscribe-style reply (should suppress without human input); re-run stage 4 (contacts already sent must not load again).
+The engine was tested stage by stage on synthetic data, with no real prospect contacted. Scoring and reply classification ran on a local model on a single VM; paid provider calls were capped at 10 accounts. Every real send went to the author's own address, and the rest were logged without sending.
+
+| Stage | What was run | Result |
+|---|---|---|
+| 1. Ingestion | 109 leads in one batch (100 unique, 9 duplicate or URL variants) | 100 inserted, 9 of 9 duplicates dropped, 74 s in total; a wrong secret returned 401 in 0.6 s |
+| 2. Website audit | 100 business sites, then a 40-site stratified sample after scoring moved into code | With the model computing the score, 0 of 100 qualified (scores 0 to 65, no separation between venues and non-venues). With the model extracting facts and code computing the score, 7 of 40 qualified, 0 of 16 non-venue and fast-casual sites qualified, and the highest non-venue score fell from 65 to 30 |
+| 3. Enrichment | 10 live accounts through Tomba, the Apify fallback and Reoon | 8 of 10 yielded a candidate address (5 from Tomba, 3 from the fallback); 2 of those 8 passed verification and 6 were suppressed with a reason (2 invalid, 4 unverifiable) |
+| 4. Campaign engine | 100 synthetic contacts through the send gate, a log-only sender and one real email | 95 eligible after skipping contacts that already had a campaign; 12 of 12 suppressed addresses blocked (10 by domain, 2 by exact address); the daily cap held the batch at 5; 0 suppressed addresses reached the batch; the real email was sent in 1.5 s |
+| 5. Reply triage | 60 synthetic replies: interested, objection, out of office, unsubscribe and adversarial | 54 of 55 labelled replies classified correctly; 15 of 15 unsubscribes routed to suppression; 0 of 40 other replies suppressed; 60 of 60 routed consistently with their classification |
+
+### Scope and limits of these results
+
+- **Data and size:** synthetic inputs and well-known sites, one run each. The scoring comparison used 40 sites and the live enrichment run used 10 accounts, so the rates are indicative, not statistical.
+- **Website audit:** only the homepage is fetched. Sites that publish event details on a separate page did not qualify, which includes all 8 large hotel sites in the sample.
+- **Enrichment:** calls to the contact finder are not spaced, and 5 of 10 made in quick succession were rate-limited; the fallback recovered 3 of those 5. The first address the finder lists is not necessarily an events contact. Large mail providers often return an unverifiable result, which is suppressed rather than sent to.
+- **Campaign engine:** the approval email was replaced by an automatic approval, and the campaign-ID write-back and CRM update were outside the test, so the re-run guard was not measured.
+- **Reply triage:** both explicit instruction-injection attempts in the adversarial set (2 of 2) were classified as interested; the human approval before any send contains this. No reply scored below the 0.7 confidence threshold, so the human-review route was not triggered, and the ledger, CRM and chat writes were logged rather than executed in this run.
+
+[`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1 if you want to repeat the ingestion checks.
 
 ## Configuration and swap-ins
 
