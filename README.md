@@ -78,7 +78,7 @@ flowchart LR
     G[Gmail trigger / reply webhook] --> F{Campaign reply?}
     F --> K[Local LLM: intent]
     K --> RT{Route}
-    RT -- interested --> H[(Ledger + Airtable) + Slack approval card]
+    RT -- interested --> H["Ledger + Airtable row, then Slack approval card"]
     RT -- unsubscribe --> US[(Auto-suppress + mark unsubscribed)]
     RT -- other --> LG[(Log)]
   end
