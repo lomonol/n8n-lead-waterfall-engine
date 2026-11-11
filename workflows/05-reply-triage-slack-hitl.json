@@ -25,7 +25,7 @@
         "messages": {
           "messageValues": [
             {
-              "message": "You are the Inbound Triage AI for CaterFlow AI.\nAnalyze incoming replies from restaurant owners and event directors.\n\nClassify the intent into EXACTLY one category:\n1. \"INTERESTED\" - Shows buying intent, asks for pricing, availability, or meeting.\n2. \"OBJECTION\" - Asks technical questions, cites timing, or current vendor.\n3. \"OOO\" - Auto-responder or out of office note.\n4. \"UNSUBSCRIBE\" - Requests removal, expresses hostility, or says not interested.\n\nIf INTERESTED or OBJECTION, draft a polite, professional 2-sentence response from Liam Thorne offering a calendar link.\n"
+              "message": "You are the Inbound Triage AI for CaterFlow AI.\nAnalyze incoming replies from restaurant owners and event directors.\n\nClassify the intent into EXACTLY one category:\n1. \"INTERESTED\" - Shows buying intent, asks for pricing, availability, or meeting.\n2. \"OBJECTION\" - Asks technical questions, cites timing, or current vendor.\n3. \"OOO\" - Auto-responder or out of office note.\n4. \"UNSUBSCRIBE\" - Requests removal, expresses hostility, or says not interested.\n\nAlso return confidence_score (0 to 1): how sure you are of the category.\n\nIf INTERESTED or OBJECTION, draft a polite, professional 2-sentence response from the sender offering a calendar link.\n"
             }
           ]
         },
@@ -43,7 +43,7 @@
     {
       "parameters": {
         "schemaType": "manual",
-        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"sentiment\": {\n      \"type\": \"string\",\n      \"enum\": [\"INTERESTED\", \"OBJECTION\", \"OOO\", \"UNSUBSCRIBE\"]\n    },\n    \"confidence_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 1 confidence\"\n    },\n    \"ai_draft_reply\": {\n      \"type\": \"string\",\n      \"description\": \"2-sentence response draft\"\n    },\n    \"urgency\": {\n      \"type\": \"string\",\n      \"enum\": [\"HIGH\", \"MEDIUM\", \"LOW\"]\n    }\n  },\n  \"required\": [\"sentiment\", \"ai_draft_reply\", \"urgency\"]\n}\n"
+        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"sentiment\": {\n      \"type\": \"string\",\n      \"enum\": [\"INTERESTED\", \"OBJECTION\", \"OOO\", \"UNSUBSCRIBE\"]\n    },\n    \"confidence_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 1 confidence\"\n    },\n    \"ai_draft_reply\": {\n      \"type\": \"string\",\n      \"description\": \"2-sentence response draft\"\n    },\n    \"urgency\": {\n      \"type\": \"string\",\n      \"enum\": [\"HIGH\", \"MEDIUM\", \"LOW\"]\n    }\n  },\n  \"required\": [\"sentiment\", \"confidence_score\", \"ai_draft_reply\", \"urgency\"]\n}\n"
       },
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
@@ -88,30 +88,6 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.output?.sentiment || $json.sentiment }}",
-                    "rightValue": "INTERESTED",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "8570a239-80b3-46bd-af16-6dda9188a404"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Interested"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 4
-                },
-                "conditions": [
-                  {
                     "id": "ba72a5c8-0867-4e56-8d91-9635ab5d0972",
                     "leftValue": "={{ $json.output?.sentiment || $json.sentiment }}",
                     "rightValue": "SLACK_ID_PLACEHOLDER",
@@ -126,6 +102,54 @@
               },
               "renameOutput": true,
               "outputKey": "Unsubscribe"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "9d1f0a52-7a11-4c0e-8f33-0a0000000001",
+                    "leftValue": "={{ Number($json.output?.confidence_score ?? 0) }}",
+                    "rightValue": 0.7,
+                    "operator": {
+                      "type": "number",
+                      "operation": "lt"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Low confidence"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output?.sentiment || $json.sentiment }}",
+                    "rightValue": "INTERESTED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8570a239-80b3-46bd-af16-6dda9188a404"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Interested"
             }
           ]
         },
@@ -656,7 +680,50 @@
         0
       ],
       "parameters": {
-        "jsCode": "const item = $input.first().json;\n\nlet from_email = '';\nif (item.from && typeof item.from === 'object' && item.from.value && item.from.value[0]) {\n  from_email = item.from.value[0].address;\n} else if (item.from && typeof item.from === 'object' && item.from.text) {\n  from_email = item.from.text;\n} else if (typeof item.from === 'string') {\n  from_email = item.from;\n}\n\nlet subject = item.subject || '';\nlet body_text = item.text || item.snippet || '';\n\nif (!from_email && item.body) {\n  from_email = item.body?.data?.from || item.body?.from || '';\n  subject = item.body?.data?.subject || item.body?.subject || '';\n  body_text = item.body?.data?.text || item.body?.reply_text || item.body?.text || '';\n}\n\nreturn [{\n  json: {\n    from_email: from_email || 'you@example.com',\n    subject: subject || 'Re: Private dining at Park Manor 75?',\n    body_text: body_text || 'Interested in private dining booking engine'\n  }\n}];"
+        "jsCode": "const item = $input.first().json;\n\nlet from_email = '';\nif (item.from && typeof item.from === 'object' && item.from.value && item.from.value[0]) {\n  from_email = item.from.value[0].address;\n} else if (item.from && typeof item.from === 'object' && item.from.text) {\n  from_email = item.from.text;\n} else if (typeof item.from === 'string') {\n  from_email = item.from;\n}\n\nlet subject = item.subject || '';\nlet body_text = item.text || item.snippet || '';\n\nif (!from_email && item.body) {\n  from_email = item.body?.data?.from || item.body?.from || '';\n  subject = item.body?.data?.subject || item.body?.subject || '';\n  body_text = item.body?.data?.text || item.body?.reply_text || item.body?.text || '';\n}\n\nreturn [{\n  json: {\n    from_email: from_email || 'you@example.com',\n    subject: subject,\n    body_text: body_text\n  }\n}];"
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "outbound_inbound_replies",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "prospect_email",
+              "fieldValue": "={{ $('Normalize Intake').item.json.from_email }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "={{ $json.output?.sentiment || 'UNKNOWN' }}"
+            },
+            {
+              "fieldId": "reply_body",
+              "fieldValue": "={{ $('Normalize Intake').item.json.body_text }}"
+            },
+            {
+              "fieldId": "ai_draft_response",
+              "fieldValue": "={{ $json.output?.ai_draft_reply || '' }}"
+            },
+            {
+              "fieldId": "operator_action",
+              "fieldValue": "needs_human_review"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        800,
+        464
+      ],
+      "id": "5b0c7e12-3a44-4d1e-9a51-0c1d2e3f4a07",
+      "name": "Log Low-Confidence Reply",
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_ME",
+          "name": "CaterFlow Outbound DB"
+        }
       }
     }
   ],
@@ -698,14 +765,21 @@
       "main": [
         [
           {
-            "node": "Log Hot Reply to Ledger",
+            "node": "Auto-Suppress Email",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Auto-Suppress Email",
+            "node": "Log Low-Confidence Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Hot Reply to Ledger",
             "type": "main",
             "index": 0
           }

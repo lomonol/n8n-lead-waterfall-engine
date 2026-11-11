@@ -264,7 +264,8 @@
           "id": "REPLACE_ME",
           "name": "CaterFlow Outbound DB"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -620,6 +621,13 @@
         [
           {
             "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drop Duplicate Domain",
             "type": "main",
             "index": 0
           }

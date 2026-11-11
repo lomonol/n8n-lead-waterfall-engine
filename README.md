@@ -174,7 +174,7 @@ Opt-out handling being automatic is the compliance-critical part of the design.
 | Table | Purpose |
 |---|---|
 | `outbound_companies` | The ledger: `domain` (unique key in practice), `company_name`, `website_url`, `city`, `state`, `vertical`, `status` (`seeded`, `qualified`, `disqualified`), `icp_score`, dossier fields |
-| `outbound_contacts` | Verified contacts: `company_id`, name, `email`, `job_title`, `enrichment_source`, `deliverability_status`, `assigned_campaign_id` |
+| `outbound_contacts` | Verified contacts: `company_id`, name, `email`, `job_title`, `enrichment_source`, `deliverability_status`, `assigned_campaign_id`, `resend_message_id` |
 | `outbound_suppression` | Never-contact list: `email_or_domain`, `type`, `reason` |
 | `outbound_inbound_replies` | Classified replies: `prospect_email`, `sentiment`, `reply_body`, `ai_draft_response` |
 
@@ -195,11 +195,11 @@ Findings from auditing my own build, in priority order:
 1. ~~**Campaign sends have no human gate or daily cap.**~~ **Added to the workflow, not yet run-tested.** After the suppression check, one approval email (Gmail send-and-wait) lists the whole batch; nothing sends unless a person approves. A Code node then applies a per-day cap (`DAILY_CAP = 5`, counted in workflow static data) before the send. Known limits: static data only persists in production runs, so the cap does not carry across manual test runs; and the count is taken at approval time, so a send that later fails still uses up cap. Set `sendTo` on the approval node to your own address.
 2. ~~**Re-runs can double-send.**~~ **Fixed in the workflow, not yet run-tested.** Stage 4 now loads only contacts where `assigned_campaign_id is null`, so a re-run skips contacts that were already sent.
 3. ~~**Suppression is not re-checked at send time.**~~ **Fixed in the workflow, not yet run-tested.** A `Check Suppression List` lookup (email or domain, against `outbound_suppression`) and a `Not Suppressed?` IF now sit between the contact fetch and the send. Suppressed contacts stop there. I could not execute it end to end: the test run would write to the real database and send through Resend, so it was blocked. It is wired and saved, nothing more.
-4. **A decision that belongs in code is in the prompt.** `icp_qualified` is decided by the model from a "70 or above" instruction. I should compute it from `icp_score` in an IF node, as I did in the [incident platform](https://github.com/lomonol/n8n-ai-incident-escalation-platform).
-5. **Dedupe is check-then-insert.** Two simultaneous submissions of one domain could both pass. Add a unique index on `domain` and treat the conflict as "duplicate".
-6. **Confidence is returned but unused.** The reply classifier emits `confidence_score`, yet routing ignores it. Low-confidence results should go to a human instead of auto-routing, especially for `UNSUBSCRIBE`.
-7. **Shared secret is compared in a node.** Move it to a credential; compare in a way that is not logged.
-8. **Naming leftovers.** A field still called `instantly_lead_id` from an earlier email provider; the reply prompt names a demo persona. Cosmetic, but sloppy in a portfolio piece.
+4. ~~**A decision that belongs in code is in the prompt.**~~ **Fixed in the workflow, not yet run-tested.** `icp_qualified` is no longer in the model's output schema. An IF node compares `icp_score >= 70`, as in the [incident platform](https://github.com/lomonol/n8n-ai-incident-escalation-platform).
+5. ~~**Dedupe is check-then-insert.**~~ **Fixed, needs one SQL step.** [`schema/migrations.sql`](schema/migrations.sql) adds a unique index on the lowercased domain, and the insert node now sends a conflict error to "Drop Duplicate Domain" instead of failing the run. Until the index exists, the race is still open.
+6. ~~**Confidence is returned but unused.**~~ **Fixed in the workflow, not yet run-tested.** `confidence_score` is now required, and a Switch rule sends anything below 0.7 (or missing) to a `needs_human_review` row instead of auto-routing. One deliberate exception: `UNSUBSCRIBE` is matched first and suppresses at any confidence, because wrongly suppressing a lead costs one contact while missing an opt-out is the compliance failure. Limit: the review row is a ledger entry only, with no Slack alert yet.
+7. **Shared secret is compared in a node.** *Still open.* The intake secret is hardcoded in two nodes of workflow 01 (the check and the scheduled pipe), and the Apify and Slack tokens are hardcoded in their HTTP nodes. The fix is credentials (a Header Auth credential for the webhook and the pipe, a query-auth one for Apify, a bearer one for Slack), which have to be created in n8n by the account owner. The exported files here contain placeholders, not the live values.
+8. ~~**Naming leftovers.**~~ **Fixed.** The reply prompt no longer names a demo persona, the intake normaliser no longer invents a fake sender and subject when a payload is malformed (it used to default to a made-up prospect address, which a mis-parsed unsubscribe could have suppressed), and the `instantly_lead_id` column is renamed `resend_message_id` in the migration and the workflow.
 
 ## Configuration and swap-ins
 
@@ -238,11 +238,12 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 | [`workflows/05-reply-triage-slack-hitl.json`](workflows/05-reply-triage-slack-hitl.json) | Classify replies, suppress, alert |
 | [`workflows/06-error-handler-dlq.json`](workflows/06-error-handler-dlq.json) | Global error handler |
 | [`samples/lead-intake.json`](samples/lead-intake.json) | Sample request payload |
+| [`schema/migrations.sql`](schema/migrations.sql) | Unique domain index and column rename |
 
 ### Run it yourself
 1. Import the six workflows into n8n. All are exported **inactive**.
 2. Replace every placeholder (`REPLACE_ME`, `YOUR_*`, `WORKFLOW_ID_*`), re-select credentials, and re-link the Execute Workflow nodes and the Error workflow setting to your imported copies.
-3. Create the four Supabase tables and the Airtable cockpit. Pull a Qwen 2.5 model into Ollama.
+3. Create the four Supabase tables and the Airtable cockpit, then run [`schema/migrations.sql`](schema/migrations.sql). Pull a Qwen 2.5 model into Ollama.
 4. Send the sample payload:
 
    ```bash

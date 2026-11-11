@@ -136,7 +136,7 @@
     {
       "parameters": {
         "schemaType": "manual",
-        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"icp_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 100 ICP fit score based on private dining and catering capability\"\n    },\n    \"icp_qualified\": {\n      \"type\": \"boolean\",\n      \"description\": \"True if icp_score is 70 or above, false otherwise\"\n    },\n    \"online_booking_present\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the venue has instant online private event booking\"\n    },\n    \"catering_capabilities\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"description\": \"List of event capabilities found (e.g. Private Dining, Full Buyout, Bar Packages)\"\n    },\n    \"primary_pain_point\": {\n      \"type\": \"string\",\n      \"description\": \"Specific operational bottleneck observed on their site (e.g. 'Requires downloading a static PDF packet with no instant pricing', 'Routes high-ticket event inquiries to a generic info@ email'). Do not write generic slogans.\"\n    },\n    \"icebreaker_angle\": {\n      \"type\": \"string\",\n      \"description\": \"A 1-2 sentence B2B cold email opener addressed to the venue's Event Director following our formula. Must reference a real venue detail and their manual inquiry friction. NEVER write ads for diners.\"\n    },\n    \"reasoning\": {\n      \"type\": \"string\",\n      \"description\": \"Detailed justification for the score\"\n    }\n  },\n  \"required\": [\"icp_score\", \"icp_qualified\", \"online_booking_present\", \"primary_pain_point\", \"icebreaker_angle\", \"reasoning\"]\n}"
+        "inputSchema": "={\n  \"type\": \"object\",\n  \"properties\": {\n    \"icp_score\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 100 ICP fit score based on private dining and catering capability\"\n    },\n    \"online_booking_present\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the venue has instant online private event booking\"\n    },\n    \"catering_capabilities\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"description\": \"List of event capabilities found (e.g. Private Dining, Full Buyout, Bar Packages)\"\n    },\n    \"primary_pain_point\": {\n      \"type\": \"string\",\n      \"description\": \"Specific operational bottleneck observed on their site (e.g. 'Requires downloading a static PDF packet with no instant pricing', 'Routes high-ticket event inquiries to a generic info@ email'). Do not write generic slogans.\"\n    },\n    \"icebreaker_angle\": {\n      \"type\": \"string\",\n      \"description\": \"A 1-2 sentence B2B cold email opener addressed to the venue's Event Director following our formula. Must reference a real venue detail and their manual inquiry friction. NEVER write ads for diners.\"\n    },\n    \"reasoning\": {\n      \"type\": \"string\",\n      \"description\": \"Detailed justification for the score\"\n    }\n  },\n  \"required\": [\"icp_score\", \"online_booking_present\", \"primary_pain_point\", \"icebreaker_angle\", \"reasoning\"]\n}"
       },
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
@@ -167,18 +167,17 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
-            "version": 4
+            "typeValidation": "loose",
+            "version": 2
           },
           "conditions": [
             {
               "id": "269935b9-dced-4fbb-bd10-38ffd98aa274",
-              "leftValue": "={{ $json.output.icp_qualified }}",
-              "rightValue": "true",
+              "leftValue": "={{ Number($json.output.icp_score) }}",
+              "rightValue": 70,
               "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
+                "type": "number",
+                "operation": "gte"
               }
             }
           ],

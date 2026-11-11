@@ -182,7 +182,7 @@
               "fieldValue": "={{ $('Build Outreach Payload').item.json.campaign_id }}"
             },
             {
-              "fieldId": "instantly_lead_id",
+              "fieldId": "resend_message_id",
               "fieldValue": "={{ $json.id }}"
             },
             {
