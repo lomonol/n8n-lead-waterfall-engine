@@ -12,6 +12,8 @@
 | **Stack** | n8n, Ollama (Qwen 2.5, local), Supabase, Airtable, Apify, Tomba, Reoon, Resend, Gmail, Slack |
 | **Status** | Runs on sample data. Has not sent real campaigns. Known defects are listed at the bottom. |
 
+> **Resend was used for testing only.** Every send in this build went to my own address through Resend's sandbox. Do not use Resend for production cold outreach: it is a transactional email service, and sending unsolicited outreach through it violates Resend's terms of use. Swap the sender (see [Configuration and swap-ins](#configuration-and-swap-ins)) for a cold-email-appropriate provider or your own warmed mailbox before sending to real prospects.
+
 > **If you only read one section:** [Why this is interesting](#why-this-is-interesting) and [What I would fix next](#what-i-would-fix-next).
 
 ---
@@ -212,7 +214,7 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
 | **Lead source** | Apify Google Maps actor, weekly | Any scraper, CSV upload, or CRM export. Anything that can POST to the intake webhook works. |
 | **Contact finder** | Tomba, then Apify contact scraper | Hunter, Apollo, Snov, Dropcontact, or your own scraper. The Normalize step maps any provider to one shape. |
 | **Email verifier** | Reoon | ZeroBounce, NeverBounce, Kickbox, MillionVerifier. Change the HTTP node and the "valid" condition. |
-| **Sender** | Resend | Gmail, SMTP, Instantly, Smartlead, Mailgun. |
+| **Sender** | Resend (testing only, not for production cold outreach) | A cold-email-appropriate sender: Gmail or SMTP on a warmed mailbox, Instantly, Smartlead. Required before any real send. |
 | **Ledger and CRM** | Supabase and Airtable | Postgres, Notion, Sheets, HubSpot. Keep the unique-domain rule. |
 | **Content distiller** | Event keywords, 2,500 character cap | Your own keyword list and size limit. |
 | **Reply classes** | Interested, objection, out of office, unsubscribe | Add or rename; update the Switch. |
@@ -254,6 +256,8 @@ Everything below is a setting or a node swap, not a rewrite. The defaults are wh
    ```
 
 ### Responsible use
+Do not send real outreach through Resend; see the note at the top.
+
 Scraping and cold email are regulated. Respect site terms, include a real opt-out and postal address, honour the suppression list, and check CAN-SPAM, GDPR and PECR for your jurisdiction before sending. This is a pipeline design, not an invitation to send unsolicited bulk mail.
 
 Brand names, people and addresses are fictional demo data. MIT licensed.
