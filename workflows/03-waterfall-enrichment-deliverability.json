@@ -58,6 +58,8 @@
     {
       "parameters": {
         "url": "https://emailverifier.reoon.com/api/v1/verify",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -66,16 +68,14 @@
               "value": "={{ $json.email }}"
             },
             {
-              "name": "key",
-              "value": "YOUR_REOON_API_KEY"
-            },
-            {
               "name": "mode",
               "value": "power"
             }
           ]
         },
-        "options": {}
+        "options": {
+          "timeout": 150000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -84,60 +84,14 @@
         0
       ],
       "id": "77565e10-3743-400b-90c2-cb4ded7357af",
-      "name": "Reoon Email Verification"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "01698147-f429-49fb-96c4-d4cc4b5fcf4a",
-              "name": "first_name",
-              "value": "={{ $json.data?.emails?.[0]?.first_name || 'Events' }}",
-              "type": "string"
-            },
-            {
-              "id": "629d023e-d0a7-4af4-ad9c-93a0209d4ade",
-              "name": "last_name",
-              "value": "={{ $json.data?.emails?.[0]?.last_name || 'Director' }}",
-              "type": "string"
-            },
-            {
-              "id": "e806f2f2-81d2-4e24-89dc-c3d2de39c147",
-              "name": "full_name",
-              "value": "={{ (($json.data?.emails?.[0]?.first_name || '') + ' ' + ($json.data?.emails?.[0]?.last_name || '')).trim() || 'Director of Private Events' }}",
-              "type": "string"
-            },
-            {
-              "id": "736612ed-5437-43a8-b4d1-851892573ec8",
-              "name": "email",
-              "value": "={{ ($json.data?.emails?.[0]?.email || (Array.isArray($json.emails) ? ($json.emails[0]?.value || $json.emails[0]) : '') || '').trim().toLowerCase() }}",
-              "type": "string"
-            },
-            {
-              "id": "c2d5e449-b176-471a-a99c-42c1deb2d0ad",
-              "name": "job_title",
-              "value": "={{ $json.data?.emails?.[0]?.position || 'Director of Private Events' }}",
-              "type": "string"
-            },
-            {
-              "id": "df40a0e7-2e30-4997-8647-5c7d7460c59a",
-              "name": "enrichment_source",
-              "value": "={{ $json.data?.emails ? 'tomba' : 'apify' }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+      "name": "Reoon Email Verification",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME",
+          "name": "Reoon API Key"
+        }
       },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.5,
-      "position": [
-        1344,
-        0
-      ],
-      "id": "6feccdbb-504a-4066-9c80-58f2e1e096f7",
-      "name": "Normalize Contact Info"
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -206,7 +160,8 @@
           "id": "REPLACE_ME",
           "name": "CaterFlow Outbound DB"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -610,25 +565,21 @@
           "id": "REPLACE_ME",
           "name": "CaterFlow Outbound DB"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/run-sync-get-dataset-items",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "token",
-              "value": "YOUR_APIFY_TOKEN"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"startUrls\": [\n    { \"url\": \"{{ $('Loop Over Items').item.json.clean_website_url || $('Loop Over Items').item.json.website_url }}\" }\n  ],\n  \"maxDepth\": 1\n}\n",
-        "options": {}
+        "options": {
+          "timeout": 180000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -637,11 +588,20 @@
         144
       ],
       "id": "aada3663-0204-45be-8efc-a6baf3870600",
-      "name": "Apify Contact Scraper"
+      "name": "Apify Contact Scraper",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME",
+          "name": "Apify Token"
+        }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "url": "https://api.tomba.io/v1/domain-search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -651,20 +611,9 @@
             }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "X-Tomba-Key",
-              "value": "YOUR_TOMBA_KEY"
-            },
-            {
-              "name": "X-Tomba-Secret",
-              "value": "YOUR_TOMBA_SECRET"
-            }
-          ]
-        },
-        "options": {}
+        "options": {
+          "timeout": 60000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -673,7 +622,17 @@
         0
       ],
       "id": "b4a53b01-2662-48e8-b613-b7d7c9547e4e",
-      "name": "Tomba Domain Fallback"
+      "name": "Tomba Domain Fallback",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_ME",
+          "name": "Tomba API"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     },
     {
       "parameters": {
@@ -741,8 +700,81 @@
           "__rl": true,
           "cachedResultName": "ENT-02: 04 - Dynamic Icebreaker Matrix & Campaign Engine",
           "mode": "list",
-          "value": "WORKFLOW_ID_ent-02-04-dynamic-icebreaker-matrix-camp"
+          "value": "WORKFLOW_ID_ent-02-04-dynamic-icebreaker-matrix-campaign-eng"
         }
+      }
+    },
+    {
+      "id": "b01a10ec-01b6-4ece-a8ae-108e7e8c6372",
+      "name": "Normalize Contact Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $input.item.json;\nconst tomba = (j.data && Array.isArray(j.data.emails)) ? j.data.emails : null;\nconst rank = (e) => {\n  const t = ((e.position || '') + ' ' + (e.department || '')).toLowerCase();\n  let s = Number(e.score || 0) / 100;\n  if (/event|banquet|catering|private dining|sales|marketing|general manager|owner|director|manager/.test(t)) s += 2;\n  if (e.type === 'generic') s += 0.5;\n  return s;\n};\nlet first_name = '', last_name = '', full_name = '', email = '', job_title = '', enrichment_source = 'apify';\nif (tomba && tomba.length) {\n  const best = [...tomba].sort((a, b) => rank(b) - rank(a))[0];\n  first_name = best.first_name || '';\n  last_name = best.last_name || '';\n  full_name = (best.full_name || (first_name + ' ' + last_name)).trim();\n  email = String(best.email || '').trim().toLowerCase();\n  job_title = best.position || '';\n  enrichment_source = 'tomba';\n} else {\n  const em = Array.isArray(j.emails) ? ((j.emails[0] && j.emails[0].value) || j.emails[0]) : '';\n  email = String(em || '').trim().toLowerCase();\n}\nreturn { json: { first_name, last_name, full_name, email, job_title, enrichment_source } };"
+      }
+    },
+    {
+      "id": "543bc2c7-00eb-45bd-84c9-17cf97d2f7f7",
+      "name": "Has Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1456,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "he1",
+              "leftValue": "={{ $json.email }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "e3e5accd-10ec-4da4-bf47-c3dba3a90a8a",
+      "name": "Cap To One Contact",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        200
+      ],
+      "parameters": {
+        "maxItems": 1
+      }
+    },
+    {
+      "id": "1b94bab7-289f-4f21-9302-c4257be15007",
+      "name": "Pace Provider Calls",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 3,
+        "unit": "seconds"
       }
     }
   ],
@@ -769,7 +801,7 @@
         ],
         [
           {
-            "node": "Tomba Domain Fallback",
+            "node": "Pace Provider Calls",
             "type": "main",
             "index": 0
           }
@@ -792,17 +824,6 @@
         [
           {
             "node": "Is Email Valid?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Normalize Contact Info": {
-      "main": [
-        [
-          {
-            "node": "Reoon Email Verification",
             "type": "main",
             "index": 0
           }
@@ -860,17 +881,6 @@
         ]
       ]
     },
-    "Apify Contact Scraper": {
-      "main": [
-        [
-          {
-            "node": "Normalize Contact Info",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Tomba Domain Fallback": {
       "main": [
         [
@@ -910,14 +920,75 @@
           }
         ]
       ]
+    },
+    "Pace Provider Calls": {
+      "main": [
+        [
+          {
+            "node": "Tomba Domain Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Contact Scraper": {
+      "main": [
+        [
+          {
+            "node": "Cap To One Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cap To One Contact": {
+      "main": [
+        [
+          {
+            "node": "Normalize Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Contact Info": {
+      "main": [
+        [
+          {
+            "node": "Has Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Email?": {
+      "main": [
+        [
+          {
+            "node": "Reoon Email Verification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to Supression List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true,
-    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-",
-    "saveDataErrorExecution": "all"
+    "errorWorkflow": "WORKFLOW_ID_ent-02-global-error-handler-dead-letter-"
   },
   "active": false
 }

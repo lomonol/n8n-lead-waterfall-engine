@@ -90,7 +90,7 @@
             {
               "id": "17cf67f6-383b-433a-b5ae-8a36fc731269",
               "name": "first_name",
-              "value": "={{ $('Apply Daily Cap and Restore Batch').item.json.first_name }}",
+              "value": "={{ $('Apply Daily Cap and Restore Batch').item.json.first_name || 'there' }}",
               "type": "string"
             },
             {
@@ -142,7 +142,7 @@
         "to": "you@example.com",
         "subject": "=Private dining at {{ $json.company_name }}?",
         "emailFormat": "text",
-        "text": "=Hi {{ $json.first_name }},\\n\\n{{ $json.custom_variable.icebreaker }}\\n\\n{{ $json.custom_variable.pain_point }}\\n\\nWe built an automated private dining booking engine for Chicago hospitality venues that captures high-ticket corporate inquiries within 60 seconds and delivers instant banquet brochures.\\n\\nOpen to a brief 5-minute chat on Thursday?\\n\\nBest,\\nLiam Thorne\\nCo-Founder & Head of Growth | CaterFlow AI\\n",
+        "text": "=Hi {{ $json.first_name }},\n\n{{ $json.custom_variable.icebreaker }}\n\n{{ $json.custom_variable.pain_point }}\n\nWe built an automated private dining booking engine for Chicago hospitality venues that captures high-ticket corporate inquiries within 60 seconds and delivers instant banquet brochures.\n\nOpen to a brief 5-minute chat on Thursday?\n\nBest,\nLiam Thorne\nCo-Founder & Head of Growth | CaterFlow AI\n",
         "additionalOptions": {
           "replyTo": "you@example.com"
         }

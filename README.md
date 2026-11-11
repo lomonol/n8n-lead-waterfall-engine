@@ -116,7 +116,7 @@ A common failure in prompts like this: the model writes marketing copy for the *
 
 ### The waterfall order
 
-Per account: **Tomba** domain search first; if it returns nothing, **Apify** contact-info scraper on the site; either result is normalised into one shape and then **Reoon** verifies it. `valid` and `catch_all` count as sendable. Anything else is written to the suppression table with the reason (`Deliverability verification failed: <status>`), including accounts where no contact was found at all. One normaliser, one verifier, two sources.
+Per account: **Tomba** domain search first; if it returns nothing, **Apify** contact-info scraper on the site; either result is normalised into one shape (preferring event, sales and management contacts, never inventing a name or title) and then **Reoon** verifies it. Lookups are spaced 3 seconds apart with retries, and an account with no address found is logged to the suppression table without a verification call. `valid` and `catch_all` count as sendable. Anything else is written to the suppression table with the reason (`Deliverability verification failed: <status>`), including accounts where no contact was found at all. One normaliser, one verifier, two sources.
 
 ### Reply triage and compliance
 
@@ -125,6 +125,7 @@ The classifier returns one of four intents, `INTERESTED`, `OBJECTION`, `OOO`, `U
 - **Interested:** written to the replies ledger and Airtable, and a Slack card goes to a human with the draft. The model drafts; a person sends.
 - **Low confidence (below 0.7):** written to the replies ledger as `needs_human_review` instead of auto-routing.
 - **Unsubscribe:** matched first, at any confidence; the sender is written to the suppression table and marked unsubscribed in Airtable, immediately and with no human step.
+- **Instruction-like text:** the classifier prompt treats the email body as untrusted data, and a pattern guard marks replies that contain instructions aimed at the model as low confidence, so they go to human review instead of creating a hot-lead card.
 - **Anything else:** logged.
 
 Opt-out handling being automatic is the compliance-critical part of the design.
@@ -194,9 +195,9 @@ The engine was tested stage by stage on synthetic data, with no real prospect co
 
 - **Data and size:** synthetic inputs and well-known sites, one run each. The scoring comparison used 40 sites and the live enrichment run used 10 accounts, so the rates are indicative, not statistical.
 - **Website audit:** only the homepage is fetched. Sites that publish event details on a separate page did not qualify, which includes all 8 large hotel sites in the sample.
-- **Enrichment:** calls to the contact finder are not spaced, and 5 of 10 made in quick succession were rate-limited; the fallback recovered 3 of those 5. The first address the finder lists is not necessarily an events contact. Large mail providers often return an unverifiable result, which is suppressed rather than sent to.
+- **Enrichment:** the measured run sent contact-finder lookups back to back, and 5 of 10 were rate-limited; the fallback recovered 3 of those 5. The workflow spaces lookups 3 seconds apart and retries up to three times, which was not re-measured. The measured run used the first address the finder listed; the contact picker prefers event, sales and management roles and never invents a name or title. Large mail providers often return an unverifiable result, which is suppressed rather than sent to.
 - **Campaign engine:** the approval email was replaced by an automatic approval, and the campaign-ID write-back and CRM update were outside the test, so the re-run guard was not measured.
-- **Reply triage:** both explicit instruction-injection attempts in the adversarial set (2 of 2) were classified as interested; the human approval before any send contains this. No reply scored below the 0.7 confidence threshold, so the human-review route was not triggered, and the ledger, CRM and chat writes were logged rather than executed in this run.
+- **Reply triage:** in the 60-reply run, both explicit instruction-injection attempts (2 of 2) were classified as interested. The classifier prompt marks the email text as untrusted and a pattern guard sends replies that contain instructions aimed at the model to human review. In a 20-reply check of that version, 0 of 10 adversarial replies reached the hot-lead route (8 went to human review, 2 were genuine opt-outs and were suppressed) and 10 of 10 normal replies routed correctly. The guard patterns were tuned on that adversarial set, so unseen phrasings may still pass; the human approval before any send remains the final control. The ledger, CRM and chat writes were logged rather than executed in these runs.
 
 [`samples/lead-intake.json`](samples/lead-intake.json) is a ready payload for stage 1 if you want to repeat the ingestion checks.
 
