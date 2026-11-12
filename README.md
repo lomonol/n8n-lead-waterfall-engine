@@ -1,4 +1,4 @@
-# Case Study: Multi-Stage Lead Waterfall
+# Case Study: Lead Enrichment and Qualification Pipeline
 
 **Five chained n8n workflows that turn a raw list of businesses into verified, qualified, personalised outreach, and sort the replies, with a ledger that guarantees no company is processed twice.**
 
